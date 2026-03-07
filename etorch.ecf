@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<system xmlns="http://www.eiffel.com/developers/xml/configuration-1-23-0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.eiffel.com/developers/xml/configuration-1-23-0 http://www.eiffel.com/developers/xml/configuration-1-23-0.xsd" name="etorch" uuid="6F01103E-A528-4BA6-8E3D-2114256247BD" library_target="etorch">
+	<target name="etorch">
+		<root all_classes="true"/>
+		<file_rule>
+			<exclude>/CVS$</exclude>
+			<exclude>/EIFGENs$</exclude>
+			<exclude>/\.git$</exclude>
+			<exclude>/\.svn$</exclude>
+		</file_rule>
+		<option warning="warning" manifest_array_type="mismatch_warning">
+			<assertions precondition="true" postcondition="true" check="true" invariant="true" loop="true" supplier_precondition="true"/>
+		</option>
+		<library name="base" location="$ISE_LIBRARY\library\base\base.ecf"/>
+		<cluster name="src" location=".\src" recursive="true"/>
+	</target>
+
+	<target name="tests" extends="etorch">
+		<root class="ET_TORCH_USE_CASES" feature="make"/>
+		<setting name="console_application" value="true"/>
+		<library name="testing" location="$ISE_LIBRARY\library\testing\testing.ecf" readonly="false"/>
+		<cluster name="tests" location=".\tests" recursive="true"/>
+	</target>
+</system>
