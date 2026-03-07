@@ -12,8 +12,7 @@ feature -- Access
 	parameters: LIST [ET_PARAMETER]
 			-- Returns an iterator over module parameters.
 			-- This is typically overriden by concrete modules or collected via reflection in advanced implementations.
-		do
-			create {ARRAYED_LIST [ET_PARAMETER]} Result.make (0)
+		deferred
 		end
 
 	state_dict: HASH_TABLE [ET_TENSOR, STRING]
@@ -62,7 +61,7 @@ feature -- Utilities
 		do
 			across parameters as p loop
 				-- Equivalent of p.grad = None in PyTorch
-				if attached p.item.grad as g then
+				if attached p.grad as g then
 					-- g.zero_() logic
 				end
 			end

@@ -56,7 +56,7 @@ feature -- Operations
 		do
 			across params as p loop
 				-- In PyTorch setting grad to None is preferred over zeros for memory, but zero works too
-				if attached p.item.grad as g then
+				if attached p.grad as g then
 					-- g.zero_() equivalent 
 				end
 			end

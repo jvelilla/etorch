@@ -22,17 +22,7 @@ jobs:
         export DISPLAY=:99
         ec -config etorch.ecf -target etorch -clean -c_compile -batch
         
-    - name: Compile the test suite
+    - name: Run Tests
       run: |
         export DISPLAY=:99
-        ec -config etorch.ecf -target tests -clean -c_compile -batch
-        
-    - name: Run Tests
-      # If/when the test suite builds an executable, we run it here:
-      # The target is 'tests', which usually compiles to EIFGENs/tests/W_code/tests
-      run: |
-        if [ -f "EIFGENs/tests/W_code/tests" ]; then
-          ./EIFGENs/tests/W_code/tests
-        else
-          echo "Test executable not found, skipped."
-        fi
+        ec -config etorch.ecf -target tests -clean -c_compile -finalize -tests -batch

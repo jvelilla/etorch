@@ -9,9 +9,6 @@ class
 
 inherit
 	ET_MODULE
-		redefine
-			parameters
-		end
 
 create
 	make,
@@ -80,8 +77,6 @@ feature -- Core Operation
 
 	forward (x: ET_TENSOR): ET_TENSOR
 			-- Apply linear transformation: x @ weight^T + bias
-		local
-			w_t: ET_TENSOR
 		do
 			-- A simplified forward pass mapping directly to the DBc math requirements
 			Result := x.plus (weight) -- Placeholder. Normally: x.matmul(weight.transpose(1, 2)) + bias
