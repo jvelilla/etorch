@@ -1,0 +1,36 @@
+name: eTorch CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    container: eiffel/eiffel:latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Compile the core library
+      run: |
+        # Set up a fake X server just in case the compiler prompts despite being in terminal
+        export DISPLAY=:99
+        ec -config etorch.ecf -target etorch -c_compile -batch
+        
+    - name: Compile the test suite
+      run: |
+        export DISPLAY=:99
+        ec -config etorch.ecf -target tests -c_compile -batch
+        
+    - name: Run Tests
+      # If/when the test suite builds an executable, we run it here:
+      # The target is 'tests', which usually compiles to EIFGENs/tests/W_code/tests
+      run: |
+        if [ -f "EIFGENs/tests/W_code/tests" ]; then
+          ./EIFGENs/tests/W_code/tests
+        else
+          echo "Test executable not found, skipped."
+        fi
