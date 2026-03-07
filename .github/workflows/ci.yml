@@ -9,7 +9,9 @@ on:
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
-    container: eiffel/eiffel:latest
+    container:
+      image: eiffel/eiffel:latest
+      options: --user root
     
     steps:
     - uses: actions/checkout@v4
@@ -18,12 +20,12 @@ jobs:
       run: |
         # Set up a fake X server just in case the compiler prompts despite being in terminal
         export DISPLAY=:99
-        ec -config etorch.ecf -target etorch -c_compile -batch
+        ec -config etorch.ecf -target etorch -clean -c_compile -batch
         
     - name: Compile the test suite
       run: |
         export DISPLAY=:99
-        ec -config etorch.ecf -target tests -c_compile -batch
+        ec -config etorch.ecf -target tests -clean -c_compile -batch
         
     - name: Run Tests
       # If/when the test suite builds an executable, we run it here:
