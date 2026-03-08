@@ -32,7 +32,7 @@ feature -- Access
 		do
 			create {ARRAYED_LIST [ET_PARAMETER]} Result.make (0)
 			across modules as m loop
-				Result.append (m.item.parameters)
+				Result.append (m.parameters)
 			end
 		end
 
@@ -43,7 +43,7 @@ feature -- Core Operation
 		do
 			Result := x
 			across modules as m loop
-				Result := m.item.forward (Result)
+				Result := m.forward (Result)
 			end
 		end
 

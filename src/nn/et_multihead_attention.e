@@ -74,7 +74,7 @@ feature -- Operation
 			-- In Phase 3 or later, this will perform exact Q K V matmuls and Softmax.
 			Result := out_proj.forward (query)
 		ensure then
-			output_shape_matches: Result.shape ~ query.shape
+			output_shape_matches: Result.shape ~ x.shape
 		end
 
 invariant
