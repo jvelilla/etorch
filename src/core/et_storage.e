@@ -42,6 +42,13 @@ feature -- Query
 			correct_range: Result = (index >= 1 and index <= count)
 		end
 
+feature -- C Interoperability
+
+	data_pointer: POINTER
+			-- Raw pointer to the underlying storage memory.
+		deferred
+		end
+
 invariant
 	count_valid: count >= 0
 end

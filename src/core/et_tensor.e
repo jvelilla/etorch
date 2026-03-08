@@ -168,6 +168,138 @@ feature -- Math Operations (with strict Contracts)
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
 		end
 
+	matmul (other: ET_TENSOR): ET_TENSOR
+			-- Matrix multiplication (2D for now).
+		require
+			valid_rank: rank = 2 and other.rank = 2
+			compatible_dims: shape [2] = other.shape [1]
+		local
+			l_m, l_n, l_k: INTEGER_32
+			l_lda, l_ldb, l_ldc: INTEGER_32
+			l_res_shape: ARRAY [INTEGER_32]
+			l_res_store: ET_STORAGE_REAL_64
+			l_res_strides: ARRAY [INTEGER_32]
+			l_blas: ET_BLAS
+		do
+			l_m := shape [1]
+			l_k := shape [2]
+			l_n := other.shape [2]
+			
+			l_res_shape := <<l_m, l_n>>
+			create l_res_store.make (l_m * l_n)
+			l_res_strides := calculate_contiguous_strides (l_res_shape)
+			
+			create l_blas
+			
+			-- CblasRowMajor=101, CblasNoTrans=111
+			l_lda := l_k
+			l_ldb := l_n
+			l_ldc := l_n
+			
+			l_blas.cblas_dgemm (101, 111, 111, l_m, l_n, l_k, 1.0, storage.data_pointer, l_lda, other.storage.data_pointer, l_ldb, 0.0, l_res_store.data_pointer, l_ldc)
+			
+			create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
+		ensure
+			result_rank: Result.rank = 2
+			result_shape: Result.shape [1] = shape [1] and Result.shape [2] = other.shape [2]
+		end
+
+	mul (other: ET_TENSOR): ET_TENSOR
+			-- Element-wise multiplication.
+		require
+			same_shape: is_broadcastable (other.shape)
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i: INTEGER_32
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+			
+			from i := 1 until i > l_count loop
+				l_store.put_real_64 (storage.item_as_real_64 (offset + i) * other.storage.item_as_real_64 (other.offset + i), i)
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_store, shape, l_strides, 0)
+		ensure
+			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
+		end
+
+	exp_val: ET_TENSOR
+			-- Element-wise exponential.
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i: INTEGER_32
+			l_math: DOUBLE_MATH
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+			create l_math
+			
+			from i := 1 until i > l_count loop
+				l_store.put_real_64 (l_math.exp (storage.item_as_real_64 (offset + i)), i)
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_store, shape, l_strides, 0)
+		end
+
+	log_val: ET_TENSOR
+			-- Element-wise natural logarithm.
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i: INTEGER_32
+			l_math: DOUBLE_MATH
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+			create l_math
+			
+			from i := 1 until i > l_count loop
+				l_store.put_real_64 (l_math.log (storage.item_as_real_64 (offset + i)), i)
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_store, shape, l_strides, 0)
+		end
+
+	tanh_val: ET_TENSOR
+			-- Element-wise hyperbolic tangent.
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i: INTEGER_32
+			l_math: DOUBLE_MATH
+			l_val, l_t, l_e2x: REAL_64
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+			create l_math
+			
+			from i := 1 until i > l_count loop
+				l_val := storage.item_as_real_64 (offset + i)
+				if l_val > 20.0 then
+					l_t := 1.0
+				elseif l_val < -20.0 then
+					l_t := -1.0
+				else
+					l_e2x := l_math.exp (2.0 * l_val)
+					l_t := (l_e2x - 1.0) / (l_e2x + 1.0)
+				end
+				l_store.put_real_64 (l_t, i)
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_store, shape, l_strides, 0)
+		end
+
 
 feature -- Views (Zero-copy)
 

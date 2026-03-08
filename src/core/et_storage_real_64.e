@@ -62,6 +62,14 @@ feature {ET_TENSOR} -- Internal Data
 	data: ARRAY [REAL_64]
 			-- The underlying array
 
+feature -- C Interoperability
+
+	data_pointer: POINTER
+			-- Raw pointer to the underlying storage memory.
+		do
+			Result := data.area.base_address
+		end
+
 invariant
 	data_not_void: data /= Void
 	lower_is_one: data.lower = 1
