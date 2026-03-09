@@ -73,6 +73,9 @@ feature -- Access
 	set_grad (a_grad: ET_TENSOR)
 		do
 			grad := a_grad
+			if data.requires_grad then
+				data.set_grad (a_grad)
+			end
 		end
 
 feature -- Autograd
@@ -91,9 +94,11 @@ feature -- Autograd
 			create topo.make (100)
 			build_topo (Current, topo)
 			
-			-- gradient = 1.0 for the scalar leaf
-			create l_one.make_ones (data.shape)
-			set_grad (l_one)
+			if grad = Void then
+				-- gradient = 1.0 for the scalar leaf if not manually seeded
+				create l_one.make_ones (data.shape)
+				set_grad (l_one)
+			end
 
 			-- Apply backward in reverse topological order
 			from i := topo.count until i < 1 loop

@@ -19,16 +19,22 @@ feature -- Factories (PyTorch style)
 			-- In a full implementation, this takes actual data arrays.
 		do
 			create Result.make_zeros (a_shape)
+		ensure
+			class
 		end
 
 	zeros (a_shape: ARRAY [INTEGER_32]): ET_TENSOR
 		do
 			create Result.make_zeros (a_shape)
+		ensure
+			class
 		end
 
 	ones (a_shape: ARRAY [INTEGER_32]): ET_TENSOR
 		do
 			create Result.make_ones (a_shape)
+		ensure
+			class
 		end
 
 feature -- Gradient Mode (instance-free)
@@ -61,6 +67,30 @@ feature -- Gradient Mode (instance-free)
             -- Is gradient computation currently enabled?
         do
             Result := grad_enabled.item
+        ensure
+            class
+        end
+
+feature -- Serialization
+
+    save (state: HASH_TABLE [ET_TENSOR, STRING]; file_path: STRING)
+            -- Save the state_dict to the specified file path. (Like `torch.save`)
+        local
+            sl: ET_SAVE_LOAD
+        do
+            create sl
+            sl.save (state, file_path)
+        ensure
+            class
+        end
+
+    load (file_path: STRING): detachable HASH_TABLE [ET_TENSOR, STRING]
+            -- Load a state_dict from the specified file path. (Like `torch.load`)
+        local
+            sl: ET_SAVE_LOAD
+        do
+            create sl
+            Result := sl.load (file_path)
         ensure
             class
         end

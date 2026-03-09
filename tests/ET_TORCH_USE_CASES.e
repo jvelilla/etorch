@@ -17,6 +17,7 @@ feature -- Initialization
 			test_adam
 			test_save_load
 			test_autograd_chain
+			test_training_loop
 		end
 
 feature -- Tests
@@ -175,6 +176,87 @@ feature -- Tests
 			if attached v1.grad as g1 and attached v2.grad as g2 then
 				print ("V1 Grad: [" + g1.storage.item_as_real_64 (1).out + ", " + g1.storage.item_as_real_64 (2).out + "] (Expected [1, 1])%N")
 				print ("V2 Grad: [" + g2.storage.item_as_real_64 (1).out + ", " + g2.storage.item_as_real_64 (2).out + "] (Expected [1, 1])%N")
+			end
+		end
+
+	test_training_loop
+		local
+			x, target, w, b: ET_TENSOR
+			v_x, v_w, v_b: ET_VALUE
+			v_mul, v_pred: ET_VALUE
+			l_mul: ET_MUL_FUNCTION
+			l_add: ET_ADD_FUNCTION
+			optim: ET_ADAM
+			params: ARRAYED_LIST [ET_TENSOR]
+			step: INTEGER_32
+			loss, pred_val, target_val: REAL_64
+			grad_pred: ET_TENSOR
+		do
+			print ("%N[1.6] Tiny Training Loop (y = w*x + b)%N")
+			
+			-- Prepare data: x = 2.0, target = 10.0
+			x := {ET_TORCH}.tensor (<<1>>)
+			if attached {ET_STORAGE_REAL_64} x.storage as s then s.put_real_64 (2.0, 1) end
+			
+			target := {ET_TORCH}.tensor (<<1>>)
+			if attached {ET_STORAGE_REAL_64} target.storage as s then s.put_real_64 (10.0, 1) end
+			
+			-- Prepare parameters: w = 1.0, b = 1.0
+			w := {ET_TORCH}.ones (<<1>>)
+			w.set_requires_grad (True)
+			b := {ET_TORCH}.ones (<<1>>)
+			b.set_requires_grad (True)
+			
+			-- Optimizer
+			create params.make (2)
+			params.extend (w)
+			params.extend (b)
+			create optim.make (params, 0.1) -- lr=0.1
+			
+			create l_mul
+			create l_add
+			
+			from step := 1 until step > 50 loop
+				-- 1. Forward pass
+				create v_w.make (w)
+				create v_x.make (x)
+				create v_b.make (b)
+				
+				v_mul := l_mul.forward (<<v_w, v_x>>)
+				v_pred := l_add.forward (<<v_mul, v_b>>)
+				
+				if attached {ET_STORAGE_REAL_64} v_pred.data.storage as spred and attached {ET_STORAGE_REAL_64} target.storage as starget then
+					pred_val := spred.item_as_real_64 (1)
+					target_val := starget.item_as_real_64 (1)
+					
+					-- Loss = 0.5 * (pred - target)^2
+					loss := 0.5 * (pred_val - target_val) * (pred_val - target_val)
+					
+					if step \\ 10 = 0 or step = 1 then
+						print ("Step " + step.out + " | Loss: " + loss.out + " | Pred: " + pred_val.out + "%N")
+					end
+					
+					-- 2. Backward pass
+					-- dL/d(pred) = (pred - target)
+					grad_pred := {ET_TORCH}.tensor (<<1>>)
+					if attached {ET_STORAGE_REAL_64} grad_pred.storage as gs then
+						gs.put_real_64 (pred_val - target_val, 1)
+					end
+					v_pred.set_grad (grad_pred)
+					v_pred.backward
+					
+					-- 3. Optimize
+					optim.step
+					optim.zero_grad
+				end
+				
+				step := step + 1
+			end
+			
+			print ("Training Finished.%N")
+			if attached {ET_STORAGE_REAL_64} w.storage as ws and attached {ET_STORAGE_REAL_64} b.storage as bs then
+				print ("Optimized Weight w: " + ws.item_as_real_64 (1).out + "%N")
+				print ("Optimized Bias b: " + bs.item_as_real_64 (1).out + "%N")
 			end
 		end
 
