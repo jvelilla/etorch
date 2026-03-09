@@ -22,7 +22,13 @@ jobs:
         export DISPLAY=:99
         ec -config etorch.ecf -target etorch -clean -c_compile -batch
         
-    - name: Run Tests
+    - name: Run AutoTests
       run: |
         export DISPLAY=:99
         ec -config etorch.ecf -target tests -clean -c_compile -finalize -tests -batch
+
+    - name: Run Use Cases
+      run: |
+        export DISPLAY=:99
+        ec -config etorch.ecf -target use_cases -clean -c_compile -finalize -batch
+        ./EIFGENs/use_cases/F_code/etorch
