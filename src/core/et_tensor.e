@@ -129,6 +129,18 @@ feature -- Autograd Props
 
 	grad: detachable ET_TENSOR
 			-- Gradient of this tensor.
+			
+	set_grad (a_grad: ET_TENSOR)
+			-- Manually set the gradient (used dynamically or for tests).
+		do
+			grad := a_grad
+		end
+
+	set_requires_grad (val: BOOLEAN)
+			-- Enable/disable Autograd tracking.
+		do
+			requires_grad := val
+		end
 		
 	backward
 			-- Trigger backpropagation.
