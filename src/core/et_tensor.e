@@ -146,8 +146,11 @@ feature -- Autograd Props
 			-- Trigger backpropagation.
 		require
 			requires_grad: requires_grad
+		local
+			l_val: ET_VALUE
 		do
-			-- TODO: Implement Autograd logic here
+			create l_val.make (Current)
+			l_val.backward
 		end
 
 feature -- Math Operations (with strict Contracts)
@@ -157,24 +160,23 @@ feature -- Math Operations (with strict Contracts)
 		require
 			same_shape: is_broadcastable (other.shape)
 		local
-			l_strides: ARRAY [INTEGER_32]
+			l_strides, br_shape: ARRAY [INTEGER_32]
 			l_store: ET_STORAGE_REAL_64
-			l_count, i: INTEGER_32
+			l_count, i, idx_self, idx_other: INTEGER_32
 		do
-			-- Simplified: assume exact same contiguous shape for now.
-			-- Real implementation will iter through strides.
-			
-			l_count := calculate_product (shape)
+			br_shape := broadcast_shape (shape, other.shape)
+			l_count := calculate_product (br_shape)
 			create l_store.make (l_count)
-			l_strides := calculate_contiguous_strides (shape)
+			l_strides := calculate_contiguous_strides (br_shape)
 			
 			from i := 1 until i > l_count loop
-				-- Warning: This is a hacky 1D assumption for now, need N-dim strided iter
-				l_store.put_real_64 (storage.item_as_real_64 (offset + i) + other.storage.item_as_real_64 (other.offset + i), i)
+				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) + other.storage.item_as_real_64 (other.offset + idx_other + 1), i)
 				i := i + 1
 			end
 			
-			create Result.make_from_storage (l_store, shape, l_strides, 0)
+			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
 		ensure
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
 		end
@@ -192,6 +194,7 @@ feature -- Math Operations (with strict Contracts)
 			l_res_store: ET_STORAGE_REAL_64
 			l_res_strides: ARRAY [INTEGER_32]
 			l_blas: ET_BLAS
+			l_trans_a: INTEGER_32
 		do
 			l_m := shape [1]
 			l_k := shape [2]
@@ -203,19 +206,25 @@ feature -- Math Operations (with strict Contracts)
 			
 			create l_blas
 			
-			-- Detect if `other` is transposed (1D contiguous on dim 1)
-			if other.strides [1] = 1 and then other.strides [2] = other.shape [1] then
+			if strides.count >= 2 and then strides [1] = 1 and then strides [2] = shape [1] then
+				l_trans_a := 112 -- CblasTrans
+				l_lda := l_m
+			else
+				l_trans_a := 111 -- CblasNoTrans
+				l_lda := l_k
+			end
+			
+			if other.strides.count >= 2 and then other.strides [1] = 1 and then other.strides [2] = other.shape [1] then
 				l_trans_b := 112 -- CblasTrans
-				l_ldb := l_k -- LDB is number of physical columns (k)
+				l_ldb := l_k
 			else
 				l_trans_b := 111 -- CblasNoTrans
 				l_ldb := l_n
 			end
 			
-			l_lda := l_k
 			l_ldc := l_n
 			
-			l_blas.cblas_dgemm (101, 111, l_trans_b, l_m, l_n, l_k, 1.0, storage.data_pointer, l_lda, other.storage.data_pointer, l_ldb, 0.0, l_res_store.data_pointer, l_ldc)
+			l_blas.cblas_dgemm (101, l_trans_a, l_trans_b, l_m, l_n, l_k, 1.0, storage.data_pointer, l_lda, other.storage.data_pointer, l_ldb, 0.0, l_res_store.data_pointer, l_ldc)
 			
 			create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
 		ensure
@@ -228,20 +237,23 @@ feature -- Math Operations (with strict Contracts)
 		require
 			same_shape: is_broadcastable (other.shape)
 		local
-			l_strides: ARRAY [INTEGER_32]
+			l_strides, br_shape: ARRAY [INTEGER_32]
 			l_store: ET_STORAGE_REAL_64
-			l_count, i: INTEGER_32
+			l_count, i, idx_self, idx_other: INTEGER_32
 		do
-			l_count := calculate_product (shape)
+			br_shape := broadcast_shape (shape, other.shape)
+			l_count := calculate_product (br_shape)
 			create l_store.make (l_count)
-			l_strides := calculate_contiguous_strides (shape)
+			l_strides := calculate_contiguous_strides (br_shape)
 			
 			from i := 1 until i > l_count loop
-				l_store.put_real_64 (storage.item_as_real_64 (offset + i) * other.storage.item_as_real_64 (other.offset + i), i)
+				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) * other.storage.item_as_real_64 (other.offset + idx_other + 1), i)
 				i := i + 1
 			end
 			
-			create Result.make_from_storage (l_store, shape, l_strides, 0)
+			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
 		ensure
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
 		end
@@ -251,20 +263,23 @@ feature -- Math Operations (with strict Contracts)
 		require
 			same_shape: is_broadcastable (other.shape)
 		local
-			l_strides: ARRAY [INTEGER_32]
+			l_strides, br_shape: ARRAY [INTEGER_32]
 			l_store: ET_STORAGE_REAL_64
-			l_count, i: INTEGER_32
+			l_count, i, idx_self, idx_other: INTEGER_32
 		do
-			l_count := calculate_product (shape)
+			br_shape := broadcast_shape (shape, other.shape)
+			l_count := calculate_product (br_shape)
 			create l_store.make (l_count)
-			l_strides := calculate_contiguous_strides (shape)
+			l_strides := calculate_contiguous_strides (br_shape)
 			
 			from i := 1 until i > l_count loop
-				l_store.put_real_64 (storage.item_as_real_64 (offset + i) / other.storage.item_as_real_64 (other.offset + i), i)
+				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) / other.storage.item_as_real_64 (other.offset + idx_other + 1), i)
 				i := i + 1
 			end
 			
-			create Result.make_from_storage (l_store, shape, l_strides, 0)
+			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
 		ensure
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
 		end
@@ -274,7 +289,7 @@ feature -- Math Operations (with strict Contracts)
 		local
 			l_strides: ARRAY [INTEGER_32]
 			l_store: ET_STORAGE_REAL_64
-			l_count, i: INTEGER_32
+			l_count, i, idx_self: INTEGER_32
 			l_math: DOUBLE_MATH
 		do
 			l_count := calculate_product (shape)
@@ -283,7 +298,8 @@ feature -- Math Operations (with strict Contracts)
 			create l_math
 			
 			from i := 1 until i > l_count loop
-				l_store.put_real_64 (l_math.exp (storage.item_as_real_64 (offset + i)), i)
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				l_store.put_real_64 (l_math.exp (storage.item_as_real_64 (offset + idx_self + 1)), i)
 				i := i + 1
 			end
 			
@@ -295,7 +311,7 @@ feature -- Math Operations (with strict Contracts)
 		local
 			l_strides: ARRAY [INTEGER_32]
 			l_store: ET_STORAGE_REAL_64
-			l_count, i: INTEGER_32
+			l_count, i, idx_self: INTEGER_32
 			l_math: DOUBLE_MATH
 		do
 			l_count := calculate_product (shape)
@@ -304,7 +320,8 @@ feature -- Math Operations (with strict Contracts)
 			create l_math
 			
 			from i := 1 until i > l_count loop
-				l_store.put_real_64 (l_math.log (storage.item_as_real_64 (offset + i)), i)
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				l_store.put_real_64 (l_math.log (storage.item_as_real_64 (offset + idx_self + 1)), i)
 				i := i + 1
 			end
 			
@@ -316,9 +333,9 @@ feature -- Math Operations (with strict Contracts)
 		local
 			l_strides: ARRAY [INTEGER_32]
 			l_store: ET_STORAGE_REAL_64
-			l_count, i: INTEGER_32
+			l_count, i, idx_self: INTEGER_32
 			l_math: DOUBLE_MATH
-			l_val, l_t, l_e2x: REAL_64
+			l_val, l_t: REAL_64
 		do
 			l_count := calculate_product (shape)
 			create l_store.make (l_count)
@@ -326,16 +343,38 @@ feature -- Math Operations (with strict Contracts)
 			create l_math
 			
 			from i := 1 until i > l_count loop
-				l_val := storage.item_as_real_64 (offset + i)
-				if l_val > 20.0 then
-					l_t := 1.0
-				elseif l_val < -20.0 then
-					l_t := -1.0
-				else
-					l_e2x := l_math.exp (2.0 * l_val)
-					l_t := (l_e2x - 1.0) / (l_e2x + 1.0)
-				end
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				l_val := storage.item_as_real_64 (offset + idx_self + 1)
+				l_t := tanh_scalar (l_val)
 				l_store.put_real_64 (l_t, i)
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_store, shape, l_strides, 0)
+		end
+
+	gelu: ET_TENSOR
+			-- Gaussian Error Linear Unit (element-wise).
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i, idx_self: INTEGER_32
+			l_val, l_cdf: REAL_64
+			pi, l_sqrt_2_over_pi: REAL_64
+			l_math: DOUBLE_MATH
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+			create l_math
+			pi := 3.14159265358979323846
+			l_sqrt_2_over_pi := l_math.sqrt (2.0 / pi)
+			
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				l_val := storage.item_as_real_64 (offset + idx_self + 1)
+				l_cdf := 0.5 * (1.0 + tanh_scalar (l_sqrt_2_over_pi * (l_val + 0.044715 * l_val * l_val * l_val)))
+				l_store.put_real_64 (l_val * l_cdf, i)
 				i := i + 1
 			end
 			
@@ -349,12 +388,11 @@ feature -- Reductions
 		require
 			valid_dim: dim >= 1 and dim <= rank
 		local
-			l_res_shape: ARRAY [INTEGER_32]
+			l_res_shape, l_final_shape: ARRAY [INTEGER_32]
 			l_res_strides: ARRAY [INTEGER_32]
 			l_res_store: ET_STORAGE_REAL_64
-			i, k: INTEGER_32
-			l_val, l_sum: REAL_64
-			l_idx: INTEGER_32
+			i, k, idx_src: INTEGER_32
+			l_sum: REAL_64
 			l_count: INTEGER_32
 		do
 			l_res_shape := shape.deep_twin
@@ -362,32 +400,138 @@ feature -- Reductions
 			
 			l_count := calculate_product (l_res_shape)
 			create l_res_store.make (l_count)
-			l_res_strides := calculate_contiguous_strides (l_res_shape)
 			
-			-- Very simplified reduction (assuming contiguous underlying storage for testing)
-			-- Proper N-dim stride iterator needed for production
 			from i := 1 until i > l_count loop
+				idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
 				l_sum := 0.0
-				from k := 1 until k > shape [dim] loop
-					-- Calculate index (simplified)
-					l_idx := offset + (i - 1) * strides [dim] + (k - 1)
-					if l_idx + 1 <= storage.count then
-						l_sum := l_sum + storage.item_as_real_64 (l_idx + 1)
-					end
+				from k := 0 until k >= shape [dim] loop
+					l_sum := l_sum + storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
 					k := k + 1
 				end
 				l_res_store.put_real_64 (l_sum, i)
 				i := i + 1
 			end
 			
-			if not keep_dim then
-				-- Remove dimension logic... 
-				-- Simplified for test compatibility 
+			if keep_dim then
+				l_final_shape := l_res_shape
+			else
+				create l_final_shape.make_empty
+				from k := 1 until k > l_res_shape.count loop
+					if k /= dim then
+						l_final_shape.force (l_res_shape [k], l_final_shape.count + 1)
+					end
+					k := k + 1
+				end
+				if l_final_shape.is_empty then
+					l_final_shape.force (1, 1)
+				end
 			end
 			
-			create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
+			l_res_strides := calculate_contiguous_strides (l_final_shape)
+			create Result.make_from_storage (l_res_store, l_final_shape, l_res_strides, 0)
 		ensure
 			valid_result: Result /= Void
+		end
+
+	softmax (dim: INTEGER_32): ET_TENSOR
+			-- Softmax over dimension `dim`.
+		require
+			valid_dim: dim >= 1 and dim <= rank
+		local
+			l_max, l_sum, l_val: REAL_64
+			i, k, idx_src, idx_dst: INTEGER_32
+			l_res_store: ET_STORAGE_REAL_64
+			l_res_shape: ARRAY [INTEGER_32]
+			l_res_strides: ARRAY [INTEGER_32]
+			l_math: DOUBLE_MATH
+			l_count: INTEGER_32
+		do
+			create l_math
+			l_count := calculate_product (shape)
+			create l_res_store.make (l_count)
+			l_res_strides := calculate_contiguous_strides (shape)
+			
+			l_res_shape := shape.deep_twin
+			l_res_shape [dim] := 1
+			
+			from i := 1 until i > calculate_product (l_res_shape) loop
+				idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
+				idx_dst := linear_index_to_offset (i, shape, l_res_strides, l_res_shape)
+				
+				l_max := storage.item_as_real_64 (offset + idx_src + 1)
+				from k := 1 until k >= shape [dim] loop
+					l_val := storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
+					if l_val > l_max then l_max := l_val end
+					k := k + 1
+				end
+				
+				l_sum := 0.0
+				from k := 0 until k >= shape [dim] loop
+					l_val := storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
+					l_val := l_math.exp (l_val - l_max)
+					l_sum := l_sum + l_val
+					l_res_store.put_real_64 (l_val, idx_dst + k * l_res_strides [dim] + 1)
+					k := k + 1
+				end
+				
+				from k := 0 until k >= shape [dim] loop
+					l_val := l_res_store.item_as_real_64 (idx_dst + k * l_res_strides [dim] + 1)
+					l_res_store.put_real_64 (l_val / l_sum, idx_dst + k * l_res_strides [dim] + 1)
+					k := k + 1
+				end
+				
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_res_store, shape.deep_twin, l_res_strides, 0)
+		end
+
+	rms_norm (dim: INTEGER_32; eps: REAL_64): ET_TENSOR
+			-- Root Mean Square Normalization over dimension `dim`.
+		require
+			valid_dim: dim >= 1 and dim <= rank
+		local
+			l_sum, l_val, l_rms: REAL_64
+			i, k, idx_src, idx_dst: INTEGER_32
+			l_res_store: ET_STORAGE_REAL_64
+			l_res_shape: ARRAY [INTEGER_32]
+			l_res_strides: ARRAY [INTEGER_32]
+			l_math: DOUBLE_MATH
+			l_count: INTEGER_32
+			l_n: REAL_64
+		do
+			create l_math
+			l_count := calculate_product (shape)
+			create l_res_store.make (l_count)
+			l_res_strides := calculate_contiguous_strides (shape)
+			
+			l_res_shape := shape.deep_twin
+			l_res_shape [dim] := 1
+			l_n := shape [dim]
+			
+			from i := 1 until i > calculate_product (l_res_shape) loop
+				idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
+				idx_dst := linear_index_to_offset (i, shape, l_res_strides, l_res_shape)
+				
+				l_sum := 0.0
+				from k := 0 until k >= shape [dim] loop
+					l_val := storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
+					l_sum := l_sum + (l_val * l_val)
+					k := k + 1
+				end
+				
+				l_rms := l_math.sqrt (l_sum / l_n + eps)
+				
+				from k := 0 until k >= shape [dim] loop
+					l_val := storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
+					l_res_store.put_real_64 (l_val / l_rms, idx_dst + k * l_res_strides [dim] + 1)
+					k := k + 1
+				end
+				
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_res_store, shape.deep_twin, l_res_strides, 0)
 		end
 
 	mean: ET_TENSOR
@@ -488,6 +632,47 @@ feature -- Views (Zero-copy)
 		end
 
 feature -- Helpers
+
+	tanh_scalar (l_val: REAL_64): REAL_64
+		local
+			l_e2x: REAL_64
+			l_math: DOUBLE_MATH
+		do
+			create l_math
+			if l_val > 20.0 then
+				Result := 1.0
+			elseif l_val < -20.0 then
+				Result := -1.0
+			else
+				l_e2x := l_math.exp (2.0 * l_val)
+				Result := (l_e2x - 1.0) / (l_e2x + 1.0)
+			end
+		end
+
+	linear_index_to_offset (linear_idx: INTEGER_32; a_shape: ARRAY [INTEGER_32]; a_strides: ARRAY [INTEGER_32]; br_shape: ARRAY [INTEGER_32]): INTEGER_32
+			-- Converts a 1-based linear index from a broadcasted shape into a physical storage offset based on shape and strides.
+		local
+			rem, dim_idx, i, j: INTEGER_32
+		do
+			rem := linear_idx - 1
+			Result := 0
+			j := a_shape.count
+			from i := br_shape.count until i < 1 loop
+				dim_idx := rem \\ br_shape [i]
+				
+				if j >= 1 then
+					if a_shape [j] = 1 then
+						Result := Result + 0
+					else
+						Result := Result + dim_idx * a_strides [j]
+					end
+					j := j - 1
+				end
+				
+				rem := rem // br_shape [i]
+				i := i - 1
+			end
+		end
 
 	calculate_product (arr: ARRAY [INTEGER_32]): INTEGER_32
 			-- Return the product of all elements in the array.

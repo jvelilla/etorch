@@ -16,6 +16,7 @@ feature -- Initialization
 			test_matmul
 			test_adam
 			test_save_load
+			test_autograd_chain
 		end
 
 feature -- Tests
@@ -138,6 +139,42 @@ feature -- Tests
 				end
 			else
 				print ("Failed to load state!%N")
+			end
+		end
+
+	test_autograd_chain
+		local
+			t1, t2, t_out: ET_TENSOR
+			v1, v2, v_out: ET_VALUE
+			l_add: ET_ADD_FUNCTION
+			inputs: ARRAY [ET_VALUE]
+			g_out: ET_TENSOR
+		do
+			print ("%N[1.5] Autograd Forward and Backward Pass%N")
+			
+			create t1.make_zeros (<<2>>)
+			if attached {ET_STORAGE_REAL_64} t1.storage as s then s.put_real_64 (2.0, 1); s.put_real_64 (3.0, 2) end
+			t1.set_requires_grad (True)
+			
+			create t2.make_zeros (<<2>>)
+			if attached {ET_STORAGE_REAL_64} t2.storage as s then s.put_real_64 (4.0, 1); s.put_real_64 (5.0, 2) end
+			t2.set_requires_grad (True)
+			
+			create v1.make (t1)
+			create v2.make (t2)
+			
+			create l_add
+			inputs := <<v1, v2>>
+			v_out := l_add.forward (inputs)
+			
+			create g_out.make_ones (v_out.data.shape)
+			v_out.set_grad (g_out)
+			
+			v_out.backward
+			
+			if attached v1.grad as g1 and attached v2.grad as g2 then
+				print ("V1 Grad: [" + g1.storage.item_as_real_64 (1).out + ", " + g1.storage.item_as_real_64 (2).out + "] (Expected [1, 1])%N")
+				print ("V2 Grad: [" + g2.storage.item_as_real_64 (1).out + ", " + g2.storage.item_as_real_64 (2).out + "] (Expected [1, 1])%N")
 			end
 		end
 

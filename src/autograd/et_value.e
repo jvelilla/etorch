@@ -83,9 +83,10 @@ feature -- Autograd
 			can_backward: is_leaf or else grad_fn /= Void
 		local
 			topo: ARRAYED_LIST [ET_VALUE]
-			i: INTEGER_32
+			i, k: INTEGER_32
 			l_one: ET_TENSOR
 			grads: ARRAY [ET_TENSOR]
+			p: ET_VALUE
 		do
 			create topo.make (100)
 			build_topo (Current, topo)
@@ -98,9 +99,15 @@ feature -- Autograd
 			from i := topo.count until i < 1 loop
 				if attached topo [i].grad_fn as gf and then attached topo [i].grad as g then
 					grads := gf.backward (g)
-					-- Manually assign gradients to parents (v1 extraction)
-					-- Note: Needs full mapping against parent indices
-					-- (simplified here to assume element-wise pass logic)
+					from k := 1 until k > topo [i].parents.count loop
+						p := topo [i].parents [k]
+						if attached p.grad as cur_grad then
+							p.set_grad (cur_grad + grads [k])
+						else
+							p.set_grad (grads [k])
+						end
+						k := k + 1
+					end
 				end
 				topo [i].set_visited (False)
 				i := i - 1

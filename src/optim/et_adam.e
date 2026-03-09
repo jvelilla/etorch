@@ -65,7 +65,6 @@ feature -- Operations
 		local
 			pi: INTEGER_32
 			p: ET_TENSOR
-			p_store, g_store: ET_STORAGE_REAL_64
 			m_arr, v_arr: ARRAY [REAL_64]
 			i: INTEGER_32
 			g_val, m_val, v_val, m_hat, v_hat, p_val: REAL_64
