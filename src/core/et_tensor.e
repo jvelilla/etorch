@@ -362,14 +362,43 @@ feature -- Helpers
 
 	is_broadcastable (other_shape: ARRAY [INTEGER_32]): BOOLEAN
 			-- Can `Current` and `other` be broadcast together?
+		local
+			i, j: INTEGER_32
+			dim_self, dim_other: INTEGER_32
 		do
-			-- Simplified: only allow exact shapes for now.
-			Result := shape ~ other_shape
+			Result := True
+			i := shape.count
+			j := other_shape.count
+			from until i < 1 or j < 1 or not Result loop
+				dim_self := shape [i]
+				dim_other := other_shape [j]
+				if dim_self /= dim_other and dim_self /= 1 and dim_other /= 1 then
+					Result := False
+				end
+				i := i - 1
+				j := j - 1
+			end
 		end
 		
 	broadcast_shape (shape1, shape2: ARRAY [INTEGER_32]): ARRAY [INTEGER_32]
+		local
+			i, j, k: INTEGER_32
+			dim1, dim2: INTEGER_32
+			l_max_rank: INTEGER_32
 		do
-			Result := shape1 -- simplified
+			l_max_rank := shape1.count.max (shape2.count)
+			create Result.make_filled (1, 1, l_max_rank)
+			i := shape1.count
+			j := shape2.count
+			k := l_max_rank
+			from until k < 1 loop
+				if i >= 1 then dim1 := shape1 [i] else dim1 := 1 end
+				if j >= 1 then dim2 := shape2 [j] else dim2 := 1 end
+				Result [k] := dim1.max (dim2)
+				i := i - 1
+				j := j - 1
+				k := k - 1
+			end
 		end
 
 feature -- Output
@@ -381,4 +410,5 @@ feature -- Output
 
 invariant
 	strides_match_shape: strides.count = shape.count
+	shape_consistent_with_storage: shape.is_empty or else calculate_product(shape) <= storage.count
 end
