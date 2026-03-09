@@ -12,6 +12,10 @@
 			<assertions precondition="true" postcondition="true" check="true" invariant="true" loop="true" supplier_precondition="true"/>
 		</option>
 		<library name="base" location="$ISE_LIBRARY\library\base\base.ecf"/>
+		<library name="json" location="$ISE_LIBRARY\contrib\library\text\parser\json\library\json.ecf"/>
+		
+		<!-- Memory mapped files -->
+		<external_include location="$ECF_CONFIG_PATH/spec/mmap/include"/>
 		
 		<!-- OpenBLAS configuration representing cross platform bindings -->
 		<external_include location="$ECF_CONFIG_PATH/spec/openblas/include"/>

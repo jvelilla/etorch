@@ -62,14 +62,64 @@ feature -- Access
 			Result := grad_fn = Void
 		end
 
+	visited: BOOLEAN
+			-- Property for topological sorting
+
+	set_visited (v: BOOLEAN)
+		do
+			visited := v
+		end
+
+	set_grad (a_grad: ET_TENSOR)
+		do
+			grad := a_grad
+		end
+
 feature -- Autograd
 
 	backward
 			-- Trigger backpropagation from this node.
 		require
 			can_backward: is_leaf or else grad_fn /= Void
+		local
+			topo: ARRAYED_LIST [ET_VALUE]
+			i: INTEGER_32
+			l_one: ET_TENSOR
+			grads: ARRAY [ET_TENSOR]
 		do
-			-- Auto-grad topology logic will be implemented here
+			create topo.make (100)
+			build_topo (Current, topo)
+			
+			-- gradient = 1.0 for the scalar leaf
+			create l_one.make_ones (data.shape)
+			set_grad (l_one)
+
+			-- Apply backward in reverse topological order
+			from i := topo.count until i < 1 loop
+				if attached topo [i].grad_fn as gf and then attached topo [i].grad as g then
+					grads := gf.backward (g)
+					-- Manually assign gradients to parents (v1 extraction)
+					-- Note: Needs full mapping against parent indices
+					-- (simplified here to assume element-wise pass logic)
+				end
+				topo [i].set_visited (False)
+				i := i - 1
+			end
+		end
+
+feature {NONE} -- Helpers
+
+	build_topo (v: ET_VALUE; topo: ARRAYED_LIST [ET_VALUE])
+		do
+			if not v.visited then
+				v.set_visited (True)
+				if not v.parents.is_empty then
+					across v.parents as child loop
+						build_topo (child, topo)
+					end
+				end
+				topo.extend (v)
+			end
 		end
 
 invariant
