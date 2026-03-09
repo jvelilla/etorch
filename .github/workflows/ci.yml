@@ -16,6 +16,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
+    - name: Install System Dependencies
+      run: |
+        apt-get update
+        apt-get install -y libopenblas-dev
+    
     - name: Compile the core library
       run: |
         # Set up a fake X server just in case the compiler prompts despite being in terminal
