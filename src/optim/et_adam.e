@@ -23,7 +23,7 @@ feature {NONE} -- Initialization
 		local
 			p: ET_TENSOR
 			i: INTEGER_32
-			zero_arr1, zero_arr2: ARRAY [REAL_64]
+			m_t, v_t: ET_TENSOR
 		do
 			params := a_params
 			lr := a_lr
@@ -38,10 +38,10 @@ feature {NONE} -- Initialization
 			
 			from i := 1 until i > params.count loop
 				p := params [i]
-				create zero_arr1.make_filled (0.0, 1, p.numel)
-				create zero_arr2.make_filled (0.0, 1, p.numel)
-				m_moments.force (zero_arr1, i)
-				v_moments.force (zero_arr2, i)
+				create m_t.make_zeros (p.shape)
+				create v_t.make_zeros (p.shape)
+				m_moments.force (m_t, i)
+				v_moments.force (v_t, i)
 				i := i + 1
 			end
 		ensure
@@ -55,55 +55,57 @@ feature -- Access
 	params: LIST [ET_TENSOR]
 	lr, beta1, beta2, eps: REAL_64
 	t: INTEGER_32
-	m_moments: ARRAY [ARRAY [REAL_64]]
-	v_moments: ARRAY [ARRAY [REAL_64]]
+	m_moments: ARRAY [ET_TENSOR]
+	v_moments: ARRAY [ET_TENSOR]
 
 feature -- Operations
 
 	step
-			-- Perform a single optimization step.
+			-- Perform a single optimization step using in-place tensor operations.
 		local
 			pi: INTEGER_32
-			p: ET_TENSOR
-			m_arr, v_arr: ARRAY [REAL_64]
-			i: INTEGER_32
-			g_val, m_val, v_val, m_hat, v_hat, p_val: REAL_64
+			p, g, m, v: ET_TENSOR
+			m_grad, g_sq, v_grad, m_hat, v_hat, v_hat_sqrt, v_denom, update: ET_TENSOR
 			l_math: DOUBLE_MATH
+			m_hat_scale, v_hat_scale: REAL_64
 		do
 			t := t + 1
 			create l_math
 			
 			from pi := 1 until pi > params.count loop
 				p := params [pi]
-				if attached p.grad as g then
-					if attached {ET_STORAGE_REAL_64} p.storage as ps and then
-					   attached {ET_STORAGE_REAL_64} g.storage as gs then
-						
-						m_arr := m_moments [pi]
-						v_arr := v_moments [pi]
-						
-						from i := 1 until i > ps.count loop
-							g_val := gs.item_as_real_64 (i)
-							
-							-- m = beta1 * m + (1 - beta1) * grad
-							m_val := beta1 * m_arr [i] + (1.0 - beta1) * g_val
-							m_arr [i] := m_val
-							
-							-- v = beta2 * v + (1 - beta2) * (grad * grad)
-							v_val := beta2 * v_arr [i] + (1.0 - beta2) * (g_val * g_val)
-							v_arr [i] := v_val
-							
-							-- bias correction
-							m_hat := m_val / (1.0 - l_math.exp (t.to_double * l_math.log (beta1)))
-							v_hat := v_val / (1.0 - l_math.exp (t.to_double * l_math.log (beta2)))
-							
-							-- update parameter
-							p_val := ps.item_as_real_64 (i) - lr * m_hat / (l_math.sqrt (v_hat) + eps)
-							ps.put_real_64 (p_val, i)
-							
-							i := i + 1
-						end
-					end
+				if attached p.grad as ag then
+					g := ag
+					m := m_moments [pi]
+					v := v_moments [pi]
+					
+					-- m = beta1 * m + (1 - beta1) * grad
+					m.mul_scalar_in_place (beta1)
+					m_grad := g.mul_scalar (1.0 - beta1)
+					m.plus_in_place (m_grad)
+					
+					-- v = beta2 * v + (1 - beta2) * (grad * grad)
+					v.mul_scalar_in_place (beta2)
+					g_sq := g.mul (g)
+					v_grad := g_sq.mul_scalar (1.0 - beta2)
+					v.plus_in_place (v_grad)
+					
+					-- bias correction
+					m_hat_scale := 1.0 / (1.0 - l_math.exp (t.to_double * l_math.log (beta1)))
+					v_hat_scale := 1.0 / (1.0 - l_math.exp (t.to_double * l_math.log (beta2)))
+					
+					m_hat := m.mul_scalar (m_hat_scale)
+					v_hat := v.mul_scalar (v_hat_scale)
+					
+					-- update parameter
+					v_hat_sqrt := v_hat.sqrt_val
+					v_denom := v_hat_sqrt.plus_scalar (eps)
+					update := m_hat.div (v_denom)
+					update.mul_scalar_in_place (-lr)
+					
+					p.set_requires_grad (False)
+					p.plus_in_place (update)
+					p.set_requires_grad (True)
 				end
 				pi := pi + 1
 			end

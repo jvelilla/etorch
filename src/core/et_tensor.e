@@ -474,6 +474,61 @@ feature -- Math Operations (with strict Contracts)
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
 		end
 
+	div_in_place (other: ET_TENSOR)
+			-- In-place element-wise division.
+		require
+			not_requires_grad: not requires_grad
+			same_shape: is_broadcastable (other.shape)
+		local
+			br_shape: ARRAY [INTEGER_32]
+			l_count, i, idx_self, idx_other: INTEGER_32
+		do
+			br_shape := broadcast_shape (shape, other.shape)
+			l_count := calculate_product (br_shape)
+			
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) / other.storage.item_as_real_64 (other.offset + idx_other + 1), offset + idx_self + 1)
+				i := i + 1
+			end
+		end
+
+	div_scalar (val: REAL_64): ET_TENSOR
+			-- Element-wise division by a scalar.
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i, idx_self: INTEGER_32
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+			
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) / val, i)
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_store, shape, l_strides, 0)
+		end
+
+	div_scalar_in_place (val: REAL_64)
+			-- In-place element-wise division by a scalar.
+		require
+			not_requires_grad: not requires_grad
+		local
+			l_count, i, idx_self: INTEGER_32
+		do
+			l_count := calculate_product (shape)
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) / val, offset + idx_self + 1)
+				i := i + 1
+			end
+		end
+
 	exp_val: ET_TENSOR
 			-- Element-wise exponential.
 		local
@@ -490,6 +545,28 @@ feature -- Math Operations (with strict Contracts)
 			from i := 1 until i > l_count loop
 				idx_self := linear_index_to_offset (i, shape, strides, shape)
 				l_store.put_real_64 (l_math.exp (storage.item_as_real_64 (offset + idx_self + 1)), i)
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_store, shape, l_strides, 0)
+		end
+
+	sqrt_val: ET_TENSOR
+			-- Element-wise square root.
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i, idx_self: INTEGER_32
+			l_math: DOUBLE_MATH
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+			create l_math
+			
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				l_store.put_real_64 (l_math.sqrt (storage.item_as_real_64 (offset + idx_self + 1)), i)
 				i := i + 1
 			end
 			
