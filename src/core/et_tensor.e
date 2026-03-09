@@ -181,55 +181,190 @@ feature -- Math Operations (with strict Contracts)
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
 		end
 
-	matmul (other: ET_TENSOR): ET_TENSOR
-			-- Matrix multiplication (2D for now).
+	plus_in_place (other: ET_TENSOR)
+			-- In-place element-wise addition.
 		require
-			valid_rank: rank = 2 and other.rank = 2
-			compatible_dims: shape [2] = other.shape [1]
+			not_requires_grad: not requires_grad
+			same_shape: is_broadcastable (other.shape)
 		local
-			l_m, l_n, l_k: INTEGER_32
-			l_lda, l_ldb, l_ldc: INTEGER_32
-			l_trans_b: INTEGER_32
+			br_shape: ARRAY [INTEGER_32]
+			l_count, i, idx_self, idx_other: INTEGER_32
+		do
+			br_shape := broadcast_shape (shape, other.shape)
+			l_count := calculate_product (br_shape)
+			
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) + other.storage.item_as_real_64 (other.offset + idx_other + 1), offset + idx_self + 1)
+				i := i + 1
+			end
+		end
+
+	plus_scalar (val: REAL_64): ET_TENSOR
+			-- Element-wise addition with a scalar.
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i, idx_self: INTEGER_32
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+			
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) + val, i)
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_store, shape, l_strides, 0)
+		end
+
+	plus_scalar_in_place (val: REAL_64)
+			-- In-place element-wise addition with a scalar.
+		require
+			not_requires_grad: not requires_grad
+		local
+			l_count, i, idx_self: INTEGER_32
+		do
+			l_count := calculate_product (shape)
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) + val, offset + idx_self + 1)
+				i := i + 1
+			end
+		end
+
+	matmul (other: ET_TENSOR): ET_TENSOR
+			-- Matrix multiplication (supports 1D dot, 2D matmul, and N-D batched matmul).
+		require
+			valid_operands: rank >= 1 and other.rank >= 1
+		local
 			l_res_shape: ARRAY [INTEGER_32]
 			l_res_store: ET_STORAGE_REAL_64
 			l_res_strides: ARRAY [INTEGER_32]
+			l_m, l_n, l_k: INTEGER_32
+			l_lda, l_ldb, l_ldc: INTEGER_32
+			l_trans_a, l_trans_b: INTEGER_32
 			l_blas: ET_BLAS
-			l_trans_a: INTEGER_32
+			i, l_trans_a_iter: INTEGER_32
+			a_batch_shape, b_batch_shape, res_batch_shape: ARRAY [INTEGER_32]
+			l_batch_count: INTEGER_32
+			offset_c: INTEGER_32
+			idx_a_batch, idx_b_batch: INTEGER_32
+			l_dot: REAL_64
 		do
-			l_m := shape [1]
-			l_k := shape [2]
-			l_n := other.shape [2]
+			if rank = 1 and other.rank = 1 then
+				-- 1D dot product
+				l_k := shape [1]
+				create l_res_shape.make_empty
+				create l_res_strides.make_empty
+				create l_res_store.make (1)
+				
+				l_dot := 0.0
+				from i := 0 until i >= l_k loop
+					l_dot := l_dot + storage.item_as_real_64 (offset + i * strides [1] + 1) * 
+					                 other.storage.item_as_real_64 (other.offset + i * other.strides [1] + 1)
+					i := i + 1
+				end
+				l_res_store.put_real_64 (l_dot, 1)
+				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
 			
-			l_res_shape := <<l_m, l_n>>
-			create l_res_store.make (l_m * l_n)
-			l_res_strides := calculate_contiguous_strides (l_res_shape)
-			
-			create l_blas
-			
-			if strides.count >= 2 and then strides [1] = 1 and then strides [2] = shape [1] then
-				l_trans_a := 112 -- CblasTrans
-				l_lda := l_m
+			elseif rank >= 2 and other.rank = 1 then
+				-- Matrix-Vector product
+				create l_res_shape.make_empty
+				from i := 1 until i > rank - 1 loop
+					l_res_shape.force (shape [i], l_res_shape.count + 1)
+					i := i + 1
+				end
+				l_res_strides := calculate_contiguous_strides (l_res_shape)
+				l_batch_count := calculate_product (l_res_shape)
+				create l_res_store.make (l_batch_count)
+				
+				l_k := other.shape[1]
+				from i := 1 until i > l_batch_count loop
+					idx_a_batch := linear_index_to_offset (i, shape, strides, l_res_shape)
+					l_dot := 0.0
+					from l_trans_a_iter := 0 until l_trans_a_iter >= l_k loop
+						l_dot := l_dot + storage.item_as_real_64(offset + idx_a_batch + l_trans_a_iter * strides[rank] + 1) * other.storage.item_as_real_64(other.offset + l_trans_a_iter * other.strides[1] + 1)
+						l_trans_a_iter := l_trans_a_iter + 1
+					end
+					l_res_store.put_real_64(l_dot, i)
+					i := i + 1
+				end
+				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
+				
 			else
-				l_trans_a := 111 -- CblasNoTrans
-				l_lda := l_k
+				-- N-D Batched Matmul / 2D Matmul
+				create a_batch_shape.make_empty
+				from i := 1 until i > rank - 2 loop
+					a_batch_shape.force (shape [i], a_batch_shape.count + 1)
+					i := i + 1
+				end
+				create b_batch_shape.make_empty
+				from i := 1 until i > other.rank - 2 loop
+					b_batch_shape.force (other.shape [i], b_batch_shape.count + 1)
+					i := i + 1
+				end
+				
+				res_batch_shape := broadcast_shape(a_batch_shape, b_batch_shape)
+				
+				l_m := shape [rank - 1]
+				l_k := shape [rank]
+				l_n := other.shape [other.rank]
+				
+				l_res_shape := res_batch_shape.deep_twin
+				l_res_shape.force(l_m, l_res_shape.count + 1)
+				l_res_shape.force(l_n, l_res_shape.count + 1)
+				
+				l_batch_count := calculate_product(res_batch_shape)
+				if l_batch_count = 0 then l_batch_count := 1 end -- for 2D where batch shape is empty
+				
+				create l_res_store.make (l_batch_count * l_m * l_n)
+				l_res_strides := calculate_contiguous_strides (l_res_shape)
+				
+				create l_blas
+				
+				if strides.count >= 2 and then strides [rank-1] = 1 and then strides [rank] = l_m then
+					l_trans_a := 112 -- CblasTrans
+					l_lda := l_m
+				else
+					l_trans_a := 111 -- CblasNoTrans
+					l_lda := l_k
+				end
+				
+				if other.strides.count >= 2 and then other.strides [other.rank-1] = 1 and then other.strides [other.rank] = l_k then
+					l_trans_b := 112 -- CblasTrans
+					l_ldb := l_k
+				else
+					l_trans_b := 111 -- CblasNoTrans
+					l_ldb := l_n
+				end
+				
+				l_ldc := l_n
+				
+				if res_batch_shape.count = 0 then
+					l_blas.cblas_dgemm (101, l_trans_a, l_trans_b, l_m, l_n, l_k, 1.0, 
+						storage.data_pointer + offset * 8, l_lda, 
+						other.storage.data_pointer + other.offset * 8, l_ldb, 
+						0.0, l_res_store.data_pointer, l_ldc)
+				else
+					from i := 1 until i > l_batch_count loop
+						idx_a_batch := linear_index_to_offset(i, a_batch_shape, strides, res_batch_shape)
+						idx_b_batch := linear_index_to_offset(i, b_batch_shape, other.strides, res_batch_shape)
+						offset_c := (i - 1) * l_m * l_n
+						
+						l_blas.cblas_dgemm (101, l_trans_a, l_trans_b, l_m, l_n, l_k, 1.0, 
+							storage.data_pointer + (offset + idx_a_batch) * 8, l_lda, 
+							other.storage.data_pointer + (other.offset + idx_b_batch) * 8, l_ldb, 
+							0.0, l_res_store.data_pointer + offset_c * 8, l_ldc)
+						i := i + 1
+					end
+				end
+				
+				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
 			end
-			
-			if other.strides.count >= 2 and then other.strides [1] = 1 and then other.strides [2] = other.shape [1] then
-				l_trans_b := 112 -- CblasTrans
-				l_ldb := l_k
-			else
-				l_trans_b := 111 -- CblasNoTrans
-				l_ldb := l_n
-			end
-			
-			l_ldc := l_n
-			
-			l_blas.cblas_dgemm (101, l_trans_a, l_trans_b, l_m, l_n, l_k, 1.0, storage.data_pointer, l_lda, other.storage.data_pointer, l_ldb, 0.0, l_res_store.data_pointer, l_ldc)
-			
-			create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
-		ensure
-			result_rank: Result.rank = 2
-			result_shape: Result.shape [1] = shape [1] and Result.shape [2] = other.shape [2]
 		end
 
 	mul alias "*" (other: ET_TENSOR): ET_TENSOR
@@ -256,6 +391,61 @@ feature -- Math Operations (with strict Contracts)
 			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
 		ensure
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
+		end
+
+	mul_in_place (other: ET_TENSOR)
+			-- In-place element-wise multiplication.
+		require
+			not_requires_grad: not requires_grad
+			same_shape: is_broadcastable (other.shape)
+		local
+			br_shape: ARRAY [INTEGER_32]
+			l_count, i, idx_self, idx_other: INTEGER_32
+		do
+			br_shape := broadcast_shape (shape, other.shape)
+			l_count := calculate_product (br_shape)
+			
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) * other.storage.item_as_real_64 (other.offset + idx_other + 1), offset + idx_self + 1)
+				i := i + 1
+			end
+		end
+
+	mul_scalar (val: REAL_64): ET_TENSOR
+			-- Element-wise multiplication with a scalar.
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i, idx_self: INTEGER_32
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+			
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) * val, i)
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_store, shape, l_strides, 0)
+		end
+
+	mul_scalar_in_place (val: REAL_64)
+			-- In-place element-wise multiplication with a scalar.
+		require
+			not_requires_grad: not requires_grad
+		local
+			l_count, i, idx_self: INTEGER_32
+		do
+			l_count := calculate_product (shape)
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) * val, offset + idx_self + 1)
+				i := i + 1
+			end
 		end
 
 	div alias "/" (other: ET_TENSOR): ET_TENSOR
@@ -383,7 +573,97 @@ feature -- Math Operations (with strict Contracts)
 
 feature -- Reductions
 
-	sum (dim: INTEGER_32; keep_dim: BOOLEAN): ET_TENSOR
+	sum (dims: ARRAY [INTEGER_32]; keep_dim: BOOLEAN): ET_TENSOR
+			-- Sum reduction over specific dimensions.
+		require
+			valid_dims: not dims.is_empty
+		local
+			i, j, temp: INTEGER_32
+			l_res: ET_TENSOR
+			sorted_dims: ARRAY [INTEGER_32]
+		do
+			sorted_dims := dims.deep_twin
+			from i := 1 until i > sorted_dims.count loop
+				from j := 1 until j > sorted_dims.count - i loop
+					if sorted_dims [j] < sorted_dims [j + 1] then
+						temp := sorted_dims [j]
+						sorted_dims [j] := sorted_dims [j + 1]
+						sorted_dims [j + 1] := temp
+					end
+					j := j + 1
+				end
+				i := i + 1
+			end
+			
+			l_res := Current
+			from i := 1 until i > sorted_dims.count loop
+				l_res := l_res.sum_dim (sorted_dims [i], keep_dim)
+				i := i + 1
+			end
+			Result := l_res
+		end
+
+	mean (dims: ARRAY [INTEGER_32]; keep_dim: BOOLEAN): ET_TENSOR
+			-- Mean reduction over specific dimensions.
+		require
+			valid_dims: not dims.is_empty
+		local
+			i, j, temp: INTEGER_32
+			l_res: ET_TENSOR
+			sorted_dims: ARRAY [INTEGER_32]
+		do
+			sorted_dims := dims.deep_twin
+			from i := 1 until i > sorted_dims.count loop
+				from j := 1 until j > sorted_dims.count - i loop
+					if sorted_dims [j] < sorted_dims [j + 1] then
+						temp := sorted_dims [j]
+						sorted_dims [j] := sorted_dims [j + 1]
+						sorted_dims [j + 1] := temp
+					end
+					j := j + 1
+				end
+				i := i + 1
+			end
+			
+			l_res := Current
+			from i := 1 until i > sorted_dims.count loop
+				l_res := l_res.mean_dim (sorted_dims [i], keep_dim)
+				i := i + 1
+			end
+			Result := l_res
+		end
+
+	max (dims: ARRAY [INTEGER_32]; keep_dim: BOOLEAN): ET_TENSOR
+			-- Max reduction over specific dimensions.
+		require
+			valid_dims: not dims.is_empty
+		local
+			i, j, temp: INTEGER_32
+			l_res: ET_TENSOR
+			sorted_dims: ARRAY [INTEGER_32]
+		do
+			sorted_dims := dims.deep_twin
+			from i := 1 until i > sorted_dims.count loop
+				from j := 1 until j > sorted_dims.count - i loop
+					if sorted_dims [j] < sorted_dims [j + 1] then
+						temp := sorted_dims [j]
+						sorted_dims [j] := sorted_dims [j + 1]
+						sorted_dims [j + 1] := temp
+					end
+					j := j + 1
+				end
+				i := i + 1
+			end
+			
+			l_res := Current
+			from i := 1 until i > sorted_dims.count loop
+				l_res := l_res.max_dim (sorted_dims [i], keep_dim)
+				i := i + 1
+			end
+			Result := l_res
+		end
+
+	sum_dim (dim: INTEGER_32; keep_dim: BOOLEAN): ET_TENSOR
 			-- Sum reduction over a specific dimension.
 		require
 			valid_dim: dim >= 1 and dim <= rank
@@ -431,6 +711,66 @@ feature -- Reductions
 			create Result.make_from_storage (l_res_store, l_final_shape, l_res_strides, 0)
 		ensure
 			valid_result: Result /= Void
+		end
+
+	mean_dim (dim: INTEGER_32; keep_dim: BOOLEAN): ET_TENSOR
+			-- Mean reduction over a specific dimension.
+		require
+			valid_dim: dim >= 1 and dim <= rank
+		local
+			l_res: ET_TENSOR
+			l_N: REAL_64
+		do
+			l_res := sum_dim (dim, keep_dim)
+			l_N := shape [dim].to_double
+			Result := l_res.mul_scalar (1.0 / l_N)
+		end
+
+	max_dim (dim: INTEGER_32; keep_dim: BOOLEAN): ET_TENSOR
+			-- Max reduction over a specific dimension.
+		require
+			valid_dim: dim >= 1 and dim <= rank
+		local
+			l_res_shape, l_final_shape: ARRAY [INTEGER_32]
+			l_res_strides: ARRAY [INTEGER_32]
+			l_res_store: ET_STORAGE_REAL_64
+			i, k, idx_src: INTEGER_32
+			l_max, l_val: REAL_64
+			l_count: INTEGER_32
+		do
+			l_res_shape := shape.deep_twin
+			l_res_shape [dim] := 1
+			
+			l_count := calculate_product (l_res_shape)
+			create l_res_store.make (l_count)
+			
+			from i := 1 until i > l_count loop
+				idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
+				l_max := -1.7976931348623157e+308
+				from k := 0 until k >= shape [dim] loop
+					l_val := storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
+					if l_val > l_max or k = 0 then l_max := l_val end
+					k := k + 1
+				end
+				l_res_store.put_real_64 (l_max, i)
+				i := i + 1
+			end
+			
+			if keep_dim then
+				l_final_shape := l_res_shape
+			else
+				create l_final_shape.make_empty
+				from k := 1 until k > l_res_shape.count loop
+					if k /= dim then
+						l_final_shape.force (l_res_shape [k], l_final_shape.count + 1)
+					end
+					k := k + 1
+				end
+				if l_final_shape.is_empty then l_final_shape.force (1, 1) end
+			end
+			
+			l_res_strides := calculate_contiguous_strides (l_final_shape)
+			create Result.make_from_storage (l_res_store, l_final_shape, l_res_strides, 0)
 		end
 
 	softmax (dim: INTEGER_32): ET_TENSOR
@@ -534,7 +874,7 @@ feature -- Reductions
 			create Result.make_from_storage (l_res_store, shape.deep_twin, l_res_strides, 0)
 		end
 
-	mean: ET_TENSOR
+	mean_all: ET_TENSOR
 			-- Global mean of all elements in the tensor. Returns a scalar tensor.
 		local
 			l_sum: REAL_64
