@@ -17,7 +17,7 @@ feature {NONE} -- Initialization
 	make (a_data: ET_TENSOR)
 			-- Create a leaf node with `a_data`.
 		require
-			valid_data: a_data /= Void
+			-- No preconditions needed, all params are attached
 		do
 			data := a_data
 			create parents.make_empty
@@ -30,9 +30,7 @@ feature {NONE} -- Initialization
 	make_with_parents (a_data: ET_TENSOR; a_parents: ARRAY [ET_VALUE]; a_fn: ET_FUNCTION)
 			-- Create an intermediate node.
 		require
-			valid_data: a_data /= Void
-			valid_parents: a_parents /= Void
-			valid_fn: a_fn /= Void
+			-- No preconditions needed, all params are attached
 		do
 			data := a_data
 			parents := a_parents
@@ -75,7 +73,5 @@ feature -- Autograd
 		end
 
 invariant
-	data_not_void: data /= Void
-	parents_not_void: parents /= Void
 	leaf_consistency: is_leaf = (grad_fn = Void)
 end

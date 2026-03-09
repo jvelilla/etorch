@@ -29,7 +29,6 @@ feature {NONE} -- Initialization
 	make_from_array (arr: ARRAY [REAL_64])
 			-- Create storage pointing to the existing `arr`.
 		require
-			arr_not_void: arr /= Void
 			arr_starts_at_1: arr.lower = 1
 		do
 			data := arr
@@ -71,6 +70,5 @@ feature -- C Interoperability
 		end
 
 invariant
-	data_not_void: data /= Void
 	lower_is_one: data.lower = 1
 end

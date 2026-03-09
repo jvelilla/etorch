@@ -47,8 +47,6 @@ feature -- Core Operation
 	forward (x: ET_TENSOR): ET_TENSOR
 			-- Defines the computation performed at every call.
 			-- Should be overridden by all subclasses.
-		require
-			valid_input: x /= Void
 		deferred
 		ensure
 			valid_output: Result /= Void
@@ -69,16 +67,12 @@ feature -- Utilities
 
 	to_device (d: ET_DEVICE)
 			-- Moves all parameters to the specified device.
-		require
-			valid_device: d /= Void
 		do
 			-- In v2, this would iterate over parameters and move underlying storage
 		end
 
 	load_state_dict (state: HASH_TABLE [ET_TENSOR, STRING])
 			-- Copies parameters and buffers from `state` into this module and its descendants.
-		require
-			valid_state: state /= Void
 		do
 			-- In v2, this applies the tensors manually
 		end

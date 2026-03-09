@@ -30,8 +30,6 @@ feature {NONE} -- Initialization
 			create b_tensor.make_zeros (<<normalized_shape>>)
 			create bias.make_from_tensor (b_tensor)
 		ensure
-			weight_attached: weight /= Void
-			bias_attached: bias /= Void
 			eps_set: eps = a_eps
 		end
 
@@ -63,7 +61,4 @@ feature -- Core Operation
 			Result := x.plus (bias)
 		end
 
-invariant
-	weight_attached: weight /= Void
-	bias_attached: bias /= Void
 end

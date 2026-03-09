@@ -18,7 +18,7 @@ feature {NONE} -- Initialization
 	make (a_params: LIST [ET_TENSOR]; a_lr: REAL_64)
 			-- Initialize Adam with default beta and eps parameters.
 		require
-			valid_params: a_params /= Void and then not a_params.is_empty
+			has_params: not a_params.is_empty
 			valid_lr: a_lr > 0.0
 		do
 			params := a_params

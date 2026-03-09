@@ -18,8 +18,6 @@ feature {NONE} -- Initialization
 
 	make (a_modules: ARRAY [ET_MODULE])
 			-- Initialize sequentially with a list of modules.
-		require
-			valid_modules: a_modules /= Void
 		do
 			create {ARRAYED_LIST [ET_MODULE]} modules.make_from_array (a_modules)
 		end

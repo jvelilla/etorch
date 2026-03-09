@@ -23,9 +23,8 @@ feature {NONE} -- Initialization
 	make_from_storage (a_storage: ET_STORAGE; a_shape: ARRAY [INTEGER_32]; a_strides: ARRAY [INTEGER_32]; a_offset: INTEGER_32)
 			-- Create a tensor view over an existing storage.
 		require
-			storage_attached: a_storage /= Void
-			shape_attached: a_shape /= Void and then a_shape.lower = 1
-			strides_attached: a_strides /= Void and then a_strides.count = a_shape.count
+			shape_lower_one: a_shape.lower = 1
+			strides_match_shape: a_strides.count = a_shape.count
 			offset_valid: a_offset >= 0
 		do
 			storage := a_storage
@@ -43,7 +42,7 @@ feature {NONE} -- Initialization
 	make_zeros (a_shape: ARRAY [INTEGER_32])
 			-- Create a new ZERO-initialized tensor of float64.
 		require
-			shape_attached: a_shape /= Void and then a_shape.lower = 1
+			shape_lower_one: a_shape.lower = 1
 		local
 			l_count: INTEGER_32
 			l_store: ET_STORAGE_REAL_64
@@ -66,7 +65,7 @@ feature {NONE} -- Initialization
 	make_ones (a_shape: ARRAY [INTEGER_32])
 			-- Create a new ONE-initialized tensor of float64.
 		require
-			shape_attached: a_shape /= Void and then a_shape.lower = 1
+			shape_lower_one: a_shape.lower = 1
 		local
 			l_count: INTEGER_32
 			l_store: ET_STORAGE_REAL_64
@@ -369,9 +368,5 @@ feature -- Output
 		end
 
 invariant
-	-- Core tensors MUST be correct internally by definition
 	strides_match_shape: strides.count = shape.count
-	device_attached: device /= Void
-	storage_attached: storage /= Void
-	dtype_attached: dtype /= Void
 end

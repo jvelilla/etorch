@@ -1,3 +1,14 @@
 EIFGENs
 *.rc
 *.ckpt
+
+_v1_source/
+spec.md
+spec/openblas/bin/
+spec/openblas/lib/
+spec/openblas/include/*
+!spec/openblas/include/et_blas.h
+spec/mmap/bin/
+spec/mmap/lib/
+spec/mmap/include/*
+!spec/mmap/include/et_mmap.h

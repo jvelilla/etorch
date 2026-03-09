@@ -27,7 +27,6 @@ feature {NONE} -- Initialization
 			create bias.make_zeros (<<out_features>>)
 			has_bias := True
 		ensure
-			bias_attached: bias /= Void
 			bias_flag: has_bias
 		end
 
@@ -85,6 +84,4 @@ feature -- Core Operation
 			end
 		end
 
-invariant
-	weight_attached: weight /= Void
 end

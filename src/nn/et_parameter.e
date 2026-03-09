@@ -25,8 +25,6 @@ feature {NONE} -- Initialization
 
 	make_from_tensor (a_tensor: ET_TENSOR)
 			-- Adopt an existing tensor as a parameter.
-		require
-			valid_tensor: a_tensor /= Void
 		do
 			make_from_storage (a_tensor.storage, a_tensor.shape, a_tensor.strides, a_tensor.offset)
 			requires_grad := True
