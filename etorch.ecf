@@ -41,8 +41,14 @@
 		<cluster name="src" location=".\src" recursive="true"/>
 	</target>
 
-	<target name="tests" extends="etorch">
+	<target name="use_cases" extends="etorch">
 		<root class="ET_TORCH_USE_CASES" feature="make"/>
+		<setting name="console_application" value="true"/>
+		<cluster name="tests" location=".\tests" recursive="true"/>
+	</target>
+
+	<target name="tests" extends="etorch">
+		<root class="ET_TEST_RUNNER" feature="make"/>
 		<setting name="console_application" value="true"/>
 		<library name="testing" location="$ISE_LIBRARY\library\testing\testing.ecf" readonly="false"/>
 		<cluster name="tests" location=".\tests" recursive="true"/>
