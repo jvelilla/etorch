@@ -463,9 +463,26 @@ feature -- Math Operations (with strict Contracts)
 
 	matmul (other: ET_TENSOR): ET_TENSOR
 			-- Matrix multiplication (supports 1D dot, 2D matmul, and N-D batched matmul).
+			-- Dispatches to BLAS fast paths for float types, generic fallback for others.
 		require
 			valid_operands: rank >= 1 and other.rank >= 1
 			same_dtype: dtype ~ other.dtype
+		do
+			if dtype.is_float64 then
+				Result := matmul_blas_f64 (other)
+			elseif dtype.is_float32 then
+				Result := matmul_blas_f32 (other)
+			else
+				-- Generic fallback for int64, int32, bool (no BLAS equivalent)
+				Result := matmul_generic (other)
+			end
+			Result.set_dtype (dtype)
+		end
+
+feature {NONE} -- Matmul Helpers (BLAS fast paths + generic fallback)
+
+	matmul_blas_f64 (other: ET_TENSOR): ET_TENSOR
+			-- Matrix multiplication via BLAS cblas_dgemm (float64).
 		local
 			l_res_shape: ARRAY [INTEGER_32]
 			l_res_store: ET_STORAGE_REAL_64
@@ -474,33 +491,28 @@ feature -- Math Operations (with strict Contracts)
 			l_lda, l_ldb, l_ldc: INTEGER_32
 			l_trans_a, l_trans_b: INTEGER_32
 			l_blas: ET_BLAS
-			i, l_trans_a_iter: INTEGER_32
+			i, l_iter: INTEGER_32
 			a_batch_shape, b_batch_shape, res_batch_shape: ARRAY [INTEGER_32]
 			l_batch_count: INTEGER_32
 			offset_c: INTEGER_32
 			idx_a_batch, idx_b_batch: INTEGER_32
 			l_dot: REAL_64
 		do
-			if not dtype.is_float64 then
-				(create {EXCEPTIONS}).raise ("matmul currently only supports float64 due to BLAS dgemm backend")
-			end
-			
 			if rank = 1 and other.rank = 1 then
 				-- 1D dot product
 				l_k := shape [1]
 				create l_res_shape.make_empty
 				create l_res_strides.make_empty
 				create l_res_store.make (1)
-				
 				l_dot := 0.0
 				from i := 0 until i >= l_k loop
-					l_dot := l_dot + storage.item_as_real_64 (offset + i * strides [1] + 1) * 
+					l_dot := l_dot + storage.item_as_real_64 (offset + i * strides [1] + 1) *
 					                 other.storage.item_as_real_64 (other.offset + i * other.strides [1] + 1)
 					i := i + 1
 				end
 				l_res_store.put_real_64 (l_dot, 1)
 				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
-			
+
 			elseif rank >= 2 and other.rank = 1 then
 				-- Matrix-Vector product
 				create l_res_shape.make_empty
@@ -511,22 +523,21 @@ feature -- Math Operations (with strict Contracts)
 				l_res_strides := calculate_contiguous_strides (l_res_shape)
 				l_batch_count := calculate_product (l_res_shape)
 				create l_res_store.make (l_batch_count)
-				
 				l_k := other.shape[1]
 				from i := 1 until i > l_batch_count loop
 					idx_a_batch := linear_index_to_offset (i, shape, strides, l_res_shape)
 					l_dot := 0.0
-					from l_trans_a_iter := 0 until l_trans_a_iter >= l_k loop
-						l_dot := l_dot + storage.item_as_real_64(offset + idx_a_batch + l_trans_a_iter * strides[rank] + 1) * other.storage.item_as_real_64(other.offset + l_trans_a_iter * other.strides[1] + 1)
-						l_trans_a_iter := l_trans_a_iter + 1
+					from l_iter := 0 until l_iter >= l_k loop
+						l_dot := l_dot + storage.item_as_real_64(offset + idx_a_batch + l_iter * strides[rank] + 1) * other.storage.item_as_real_64(other.offset + l_iter * other.strides[1] + 1)
+						l_iter := l_iter + 1
 					end
 					l_res_store.put_real_64(l_dot, i)
 					i := i + 1
 				end
 				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
-				
+
 			else
-				-- N-D Batched Matmul / 2D Matmul
+				-- N-D Batched Matmul / 2D Matmul via BLAS dgemm
 				create a_batch_shape.make_empty
 				from i := 1 until i > rank - 2 loop
 					a_batch_shape.force (shape [i], a_batch_shape.count + 1)
@@ -537,65 +548,289 @@ feature -- Math Operations (with strict Contracts)
 					b_batch_shape.force (other.shape [i], b_batch_shape.count + 1)
 					i := i + 1
 				end
-				
 				res_batch_shape := broadcast_shape(a_batch_shape, b_batch_shape)
-				
 				l_m := shape [rank - 1]
 				l_k := shape [rank]
 				l_n := other.shape [other.rank]
-				
 				l_res_shape := res_batch_shape.deep_twin
 				l_res_shape.force(l_m, l_res_shape.count + 1)
 				l_res_shape.force(l_n, l_res_shape.count + 1)
-				
 				l_batch_count := calculate_product(res_batch_shape)
-				if l_batch_count = 0 then l_batch_count := 1 end -- for 2D where batch shape is empty
-				
+				if l_batch_count = 0 then l_batch_count := 1 end
 				create l_res_store.make (l_batch_count * l_m * l_n)
 				l_res_strides := calculate_contiguous_strides (l_res_shape)
-				
 				create l_blas
-				
 				if strides.count >= 2 and then strides [rank-1] = 1 and then strides [rank] = l_m then
-					l_trans_a := 112 -- CblasTrans
+					l_trans_a := 112
 					l_lda := l_m
 				else
-					l_trans_a := 111 -- CblasNoTrans
+					l_trans_a := 111
 					l_lda := l_k
 				end
-				
 				if other.strides.count >= 2 and then other.strides [other.rank-1] = 1 and then other.strides [other.rank] = l_k then
-					l_trans_b := 112 -- CblasTrans
+					l_trans_b := 112
 					l_ldb := l_k
 				else
-					l_trans_b := 111 -- CblasNoTrans
+					l_trans_b := 111
 					l_ldb := l_n
 				end
-				
 				l_ldc := l_n
-				
 				if res_batch_shape.count = 0 then
-					l_blas.cblas_dgemm (101, l_trans_a, l_trans_b, l_m, l_n, l_k, 1.0, 
-						storage.data_pointer + offset * 8, l_lda, 
-						other.storage.data_pointer + other.offset * 8, l_ldb, 
+					l_blas.cblas_dgemm (101, l_trans_a, l_trans_b, l_m, l_n, l_k, 1.0,
+						storage.data_pointer + offset * 8, l_lda,
+						other.storage.data_pointer + other.offset * 8, l_ldb,
 						0.0, l_res_store.data_pointer, l_ldc)
 				else
 					from i := 1 until i > l_batch_count loop
 						idx_a_batch := linear_index_to_offset(i, a_batch_shape, strides, res_batch_shape)
 						idx_b_batch := linear_index_to_offset(i, b_batch_shape, other.strides, res_batch_shape)
 						offset_c := (i - 1) * l_m * l_n
-						
-						l_blas.cblas_dgemm (101, l_trans_a, l_trans_b, l_m, l_n, l_k, 1.0, 
-							storage.data_pointer + (offset + idx_a_batch) * 8, l_lda, 
-							other.storage.data_pointer + (other.offset + idx_b_batch) * 8, l_ldb, 
+						l_blas.cblas_dgemm (101, l_trans_a, l_trans_b, l_m, l_n, l_k, 1.0,
+							storage.data_pointer + (offset + idx_a_batch) * 8, l_lda,
+							other.storage.data_pointer + (other.offset + idx_b_batch) * 8, l_ldb,
 							0.0, l_res_store.data_pointer + offset_c * 8, l_ldc)
 						i := i + 1
 					end
 				end
-				
 				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
 			end
 		end
+
+	matmul_blas_f32 (other: ET_TENSOR): ET_TENSOR
+			-- Matrix multiplication via BLAS cblas_sgemm (float32).
+		local
+			l_res_shape: ARRAY [INTEGER_32]
+			l_res_store: ET_STORAGE_REAL_32
+			l_res_strides: ARRAY [INTEGER_32]
+			l_m, l_n, l_k: INTEGER_32
+			l_lda, l_ldb, l_ldc: INTEGER_32
+			l_trans_a, l_trans_b: INTEGER_32
+			l_blas: ET_BLAS
+			i, l_iter: INTEGER_32
+			a_batch_shape, b_batch_shape, res_batch_shape: ARRAY [INTEGER_32]
+			l_batch_count: INTEGER_32
+			offset_c: INTEGER_32
+			idx_a_batch, idx_b_batch: INTEGER_32
+			l_dot: REAL_32
+		do
+			if rank = 1 and other.rank = 1 then
+				-- 1D dot product
+				l_k := shape [1]
+				create l_res_shape.make_empty
+				create l_res_strides.make_empty
+				create l_res_store.make (1)
+				l_dot := {REAL_32} 0.0
+				from i := 0 until i >= l_k loop
+					l_dot := l_dot + storage.item_as_real_32 (offset + i * strides [1] + 1) *
+					                 other.storage.item_as_real_32 (other.offset + i * other.strides [1] + 1)
+					i := i + 1
+				end
+				l_res_store.put_real_32 (l_dot, 1)
+				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
+
+			elseif rank >= 2 and other.rank = 1 then
+				-- Matrix-Vector product
+				create l_res_shape.make_empty
+				from i := 1 until i > rank - 1 loop
+					l_res_shape.force (shape [i], l_res_shape.count + 1)
+					i := i + 1
+				end
+				l_res_strides := calculate_contiguous_strides (l_res_shape)
+				l_batch_count := calculate_product (l_res_shape)
+				create l_res_store.make (l_batch_count)
+				l_k := other.shape[1]
+				from i := 1 until i > l_batch_count loop
+					idx_a_batch := linear_index_to_offset (i, shape, strides, l_res_shape)
+					l_dot := {REAL_32} 0.0
+					from l_iter := 0 until l_iter >= l_k loop
+						l_dot := l_dot + storage.item_as_real_32(offset + idx_a_batch + l_iter * strides[rank] + 1) * other.storage.item_as_real_32(other.offset + l_iter * other.strides[1] + 1)
+						l_iter := l_iter + 1
+					end
+					l_res_store.put_real_32(l_dot, i)
+					i := i + 1
+				end
+				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
+
+			else
+				-- N-D Batched Matmul / 2D Matmul via BLAS sgemm
+				create a_batch_shape.make_empty
+				from i := 1 until i > rank - 2 loop
+					a_batch_shape.force (shape [i], a_batch_shape.count + 1)
+					i := i + 1
+				end
+				create b_batch_shape.make_empty
+				from i := 1 until i > other.rank - 2 loop
+					b_batch_shape.force (other.shape [i], b_batch_shape.count + 1)
+					i := i + 1
+				end
+				res_batch_shape := broadcast_shape(a_batch_shape, b_batch_shape)
+				l_m := shape [rank - 1]
+				l_k := shape [rank]
+				l_n := other.shape [other.rank]
+				l_res_shape := res_batch_shape.deep_twin
+				l_res_shape.force(l_m, l_res_shape.count + 1)
+				l_res_shape.force(l_n, l_res_shape.count + 1)
+				l_batch_count := calculate_product(res_batch_shape)
+				if l_batch_count = 0 then l_batch_count := 1 end
+				create l_res_store.make (l_batch_count * l_m * l_n)
+				l_res_strides := calculate_contiguous_strides (l_res_shape)
+				create l_blas
+				if strides.count >= 2 and then strides [rank-1] = 1 and then strides [rank] = l_m then
+					l_trans_a := 112
+					l_lda := l_m
+				else
+					l_trans_a := 111
+					l_lda := l_k
+				end
+				if other.strides.count >= 2 and then other.strides [other.rank-1] = 1 and then other.strides [other.rank] = l_k then
+					l_trans_b := 112
+					l_ldb := l_k
+				else
+					l_trans_b := 111
+					l_ldb := l_n
+				end
+				l_ldc := l_n
+				if res_batch_shape.count = 0 then
+					l_blas.cblas_sgemm (101, l_trans_a, l_trans_b, l_m, l_n, l_k, {REAL_32} 1.0,
+						storage.data_pointer + offset * 4, l_lda,
+						other.storage.data_pointer + other.offset * 4, l_ldb,
+						{REAL_32} 0.0, l_res_store.data_pointer, l_ldc)
+				else
+					from i := 1 until i > l_batch_count loop
+						idx_a_batch := linear_index_to_offset(i, a_batch_shape, strides, res_batch_shape)
+						idx_b_batch := linear_index_to_offset(i, b_batch_shape, other.strides, res_batch_shape)
+						offset_c := (i - 1) * l_m * l_n
+						l_blas.cblas_sgemm (101, l_trans_a, l_trans_b, l_m, l_n, l_k, {REAL_32} 1.0,
+							storage.data_pointer + (offset + idx_a_batch) * 4, l_lda,
+							other.storage.data_pointer + (other.offset + idx_b_batch) * 4, l_ldb,
+							{REAL_32} 0.0, l_res_store.data_pointer + offset_c * 4, l_ldc)
+						i := i + 1
+					end
+				end
+				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
+			end
+		end
+
+	matmul_generic (other: ET_TENSOR): ET_TENSOR
+			-- Generic matrix multiplication via pure Eiffel loops.
+			-- Works for any dtype (int32, int64, bool) by accumulating via REAL_64.
+		local
+			l_res_shape: ARRAY [INTEGER_32]
+			l_res_store: ET_STORAGE_REAL_64
+			l_res_strides: ARRAY [INTEGER_32]
+			l_m, l_n, l_k: INTEGER_32
+			i, j, p, b_idx: INTEGER_32
+			a_batch_shape, b_batch_shape, res_batch_shape: ARRAY [INTEGER_32]
+			l_batch_count: INTEGER_32
+			idx_a_batch: INTEGER_32
+			l_dot: REAL_64
+			l_a_val, l_b_val: REAL_64
+		do
+			if rank = 1 and other.rank = 1 then
+				-- 1D dot product
+				l_k := shape [1]
+				create l_res_shape.make_empty
+				create l_res_strides.make_empty
+				create l_res_store.make (1)
+				l_dot := 0.0
+				from i := 0 until i >= l_k loop
+					l_a_val := storage_item_as_real_64_universal (storage, offset + i * strides [1] + 1)
+					l_b_val := storage_item_as_real_64_universal (other.storage, other.offset + i * other.strides [1] + 1)
+					l_dot := l_dot + l_a_val * l_b_val
+					i := i + 1
+				end
+				l_res_store.put_real_64 (l_dot, 1)
+				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
+
+			elseif rank >= 2 and other.rank = 1 then
+				-- Matrix-Vector product
+				create l_res_shape.make_empty
+				from i := 1 until i > rank - 1 loop
+					l_res_shape.force (shape [i], l_res_shape.count + 1)
+					i := i + 1
+				end
+				l_res_strides := calculate_contiguous_strides (l_res_shape)
+				l_batch_count := calculate_product (l_res_shape)
+				create l_res_store.make (l_batch_count)
+				l_k := other.shape[1]
+				from i := 1 until i > l_batch_count loop
+					idx_a_batch := linear_index_to_offset (i, shape, strides, l_res_shape)
+					l_dot := 0.0
+					from j := 0 until j >= l_k loop
+						l_a_val := storage_item_as_real_64_universal (storage, offset + idx_a_batch + j * strides[rank] + 1)
+						l_b_val := storage_item_as_real_64_universal (other.storage, other.offset + j * other.strides[1] + 1)
+						l_dot := l_dot + l_a_val * l_b_val
+						j := j + 1
+					end
+					l_res_store.put_real_64(l_dot, i)
+					i := i + 1
+				end
+				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
+
+			else
+				-- N-D Batched Matmul / 2D Matmul (pure Eiffel loops)
+				create a_batch_shape.make_empty
+				from i := 1 until i > rank - 2 loop
+					a_batch_shape.force (shape [i], a_batch_shape.count + 1)
+					i := i + 1
+				end
+				create b_batch_shape.make_empty
+				from i := 1 until i > other.rank - 2 loop
+					b_batch_shape.force (other.shape [i], b_batch_shape.count + 1)
+					i := i + 1
+				end
+				res_batch_shape := broadcast_shape(a_batch_shape, b_batch_shape)
+				l_m := shape [rank - 1]
+				l_k := shape [rank]
+				l_n := other.shape [other.rank]
+				l_res_shape := res_batch_shape.deep_twin
+				l_res_shape.force(l_m, l_res_shape.count + 1)
+				l_res_shape.force(l_n, l_res_shape.count + 1)
+				l_batch_count := calculate_product(res_batch_shape)
+				if l_batch_count = 0 then l_batch_count := 1 end
+				create l_res_store.make (l_batch_count * l_m * l_n)
+				l_res_strides := calculate_contiguous_strides (l_res_shape)
+
+				-- Triple-loop matmul for each batch
+				from b_idx := 0 until b_idx >= l_batch_count loop
+					from i := 0 until i >= l_m loop
+						from j := 0 until j >= l_n loop
+							l_dot := 0.0
+							from p := 0 until p >= l_k loop
+								l_a_val := storage_item_as_real_64_universal (storage, offset + b_idx * l_m * l_k + i * l_k + p + 1)
+								l_b_val := storage_item_as_real_64_universal (other.storage, other.offset + b_idx * l_k * l_n + p * l_n + j + 1)
+								l_dot := l_dot + l_a_val * l_b_val
+								p := p + 1
+							end
+							l_res_store.put_real_64 (l_dot, b_idx * l_m * l_n + i * l_n + j + 1)
+							j := j + 1
+						end
+						i := i + 1
+					end
+					b_idx := b_idx + 1
+				end
+				create Result.make_from_storage (l_res_store, l_res_shape, l_res_strides, 0)
+			end
+		end
+
+	storage_item_as_real_64_universal (a_storage: ET_STORAGE; index: INTEGER_32): REAL_64
+			-- Read any storage element as REAL_64, regardless of the underlying type.
+			-- This is the type-bridging helper that makes the generic fallback work.
+		do
+			if attached {ET_STORAGE_REAL_64} a_storage as s then
+				Result := s.item_as_real_64 (index)
+			elseif attached {ET_STORAGE_REAL_32} a_storage as s then
+				Result := s.item_as_real_32 (index).to_double
+			elseif attached {ET_STORAGE_INT_64} a_storage as s then
+				Result := s.item_as_int_64 (index).to_double
+			elseif attached {ET_STORAGE_INT_32} a_storage as s then
+				Result := s.item_as_int_32 (index).to_double
+			elseif attached {ET_STORAGE_BOOL} a_storage as s then
+				if s.item_as_boolean (index) then Result := 1.0 else Result := 0.0 end
+			end
+		end
+
+feature -- Math Operations (continued)
 
 	mul alias "*" (other: ET_TENSOR): ET_TENSOR
 			-- Element-wise multiplication.

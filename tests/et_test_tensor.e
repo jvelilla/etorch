@@ -339,4 +339,84 @@ feature -- DType Tests
 			end
 		end
 
+	test_matmul_float32
+			-- Verify 2x2 matmul works via BLAS sgemm for float32 tensors.
+		local
+			a, b, c: ET_TENSOR
+			a_store, b_store: ET_STORAGE_REAL_32
+			l_strides: ARRAY [INTEGER_32]
+			tol: REAL_64
+		do
+			tol := 1.0e-3
+			-- A = [[1, 2], [3, 4]]
+			create a_store.make (4)
+			a_store.put_real_32 (1.0, 1)
+			a_store.put_real_32 (2.0, 2)
+			a_store.put_real_32 (3.0, 3)
+			a_store.put_real_32 (4.0, 4)
+			-- B = [[2, 0], [1, 2]]
+			create b_store.make (4)
+			b_store.put_real_32 (2.0, 1)
+			b_store.put_real_32 (0.0, 2)
+			b_store.put_real_32 (1.0, 3)
+			b_store.put_real_32 (2.0, 4)
+
+			l_strides := <<2, 1>>
+			create a.make_from_storage (a_store, <<2, 2>>, l_strides, 0)
+			create b.make_from_storage (b_store, <<2, 2>>, l_strides, 0)
+			a.set_dtype (create {ET_DTYPE}.make_float32)
+			b.set_dtype (create {ET_DTYPE}.make_float32)
+
+			c := a.matmul (b)
+			assert ("F32 MATMUL Result shape", c.shape [1] = 2 and c.shape [2] = 2)
+			assert ("F32 MATMUL dtype is float32", c.dtype.is_float32)
+			assert ("F32 MATMUL storage is REAL_32", attached {ET_STORAGE_REAL_32} c.storage)
+			if attached {ET_STORAGE_REAL_32} c.storage as cs then
+				assert_approx_32 (cs.item_as_real_32 (1), 4.0, tol, "C[1,1]")
+				assert_approx_32 (cs.item_as_real_32 (2), 4.0, tol, "C[1,2]")
+				assert_approx_32 (cs.item_as_real_32 (3), 10.0, tol, "C[2,1]")
+				assert_approx_32 (cs.item_as_real_32 (4), 8.0, tol, "C[2,2]")
+			end
+		end
+
+	test_matmul_int32
+			-- Verify 2x2 matmul works via generic fallback for int32 tensors.
+		local
+			a, b, c: ET_TENSOR
+			a_store, b_store: ET_STORAGE_INT_32
+			l_strides: ARRAY [INTEGER_32]
+		do
+			-- A = [[1, 2], [3, 4]]
+			create a_store.make (4)
+			a_store.put_int_32 (1, 1)
+			a_store.put_int_32 (2, 2)
+			a_store.put_int_32 (3, 3)
+			a_store.put_int_32 (4, 4)
+			-- B = [[2, 0], [1, 2]]
+			create b_store.make (4)
+			b_store.put_int_32 (2, 1)
+			b_store.put_int_32 (0, 2)
+			b_store.put_int_32 (1, 3)
+			b_store.put_int_32 (2, 4)
+
+			l_strides := <<2, 1>>
+			create a.make_from_storage (a_store, <<2, 2>>, l_strides, 0)
+			create b.make_from_storage (b_store, <<2, 2>>, l_strides, 0)
+			a.set_dtype (create {ET_DTYPE}.make_int32)
+			b.set_dtype (create {ET_DTYPE}.make_int32)
+
+			c := a.matmul (b)
+			assert ("I32 MATMUL Result shape", c.shape [1] = 2 and c.shape [2] = 2)
+			assert ("I32 MATMUL dtype is int32", c.dtype.is_int32)
+			-- Generic fallback produces REAL_64 storage, but dtype is set to int32
+			if attached {ET_STORAGE_REAL_64} c.storage as cs then
+				assert ("C[1,1] = 4", cs.item_as_real_64 (1).rounded = 4)
+				assert ("C[1,2] = 4", cs.item_as_real_64 (2).rounded = 4)
+				assert ("C[2,1] = 10", cs.item_as_real_64 (3).rounded = 10)
+				assert ("C[2,2] = 8", cs.item_as_real_64 (4).rounded = 8)
+			else
+				assert ("Storage should be real 64 (generic fallback)", False)
+			end
+		end
+
 end
