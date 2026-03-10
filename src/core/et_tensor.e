@@ -16,7 +16,9 @@ inherit
 create
 	make_from_storage,
 	make_zeros,
-	make_ones
+	make_ones,
+	make_zeros_with_dtype,
+	make_ones_with_dtype
 
 feature {NONE} -- Initialization
 
@@ -40,7 +42,7 @@ feature {NONE} -- Initialization
 		end
 
 	make_zeros (a_shape: ARRAY [INTEGER_32])
-			-- Create a new ZERO-initialized tensor of float64.
+			-- Create a new ZERO-initialized tensor of default float64.
 		require
 			shape_lower_one: a_shape.lower = 1
 		local
@@ -53,7 +55,6 @@ feature {NONE} -- Initialization
 			strides := l_strides
 			offset := 0
 			l_count := calculate_product (a_shape)
-			
 			create l_store.make (l_count)
 			storage := l_store
 			create device.make_cpu
@@ -63,7 +64,7 @@ feature {NONE} -- Initialization
 		end
 
 	make_ones (a_shape: ARRAY [INTEGER_32])
-			-- Create a new ONE-initialized tensor of float64.
+			-- Create a new ONE-initialized tensor of default float64.
 		require
 			shape_lower_one: a_shape.lower = 1
 		local
@@ -77,7 +78,6 @@ feature {NONE} -- Initialization
 			strides := l_strides
 			offset := 0
 			l_count := calculate_product (a_shape)
-			
 			create l_store.make (l_count)
 			from i := 1 until i > l_count loop
 				l_store.put_real_64 (1.0, i)
@@ -86,6 +86,117 @@ feature {NONE} -- Initialization
 			storage := l_store
 			create device.make_cpu
 			create dtype.make_float64
+		ensure
+			shape_set: shape.count = a_shape.count
+		end
+
+	make_zeros_with_dtype (a_shape: ARRAY [INTEGER_32]; a_dtype: ET_DTYPE)
+			-- Create a new ZERO-initialized tensor of specific dtype.
+			-- `a_dtype` is guaranteed valid by `ET_DTYPE` invariant,
+			-- so no exception branch is needed.
+		require
+			shape_lower_one: a_shape.lower = 1
+		local
+			l_count: INTEGER_32
+			l_strides: ARRAY [INTEGER_32]
+			l_store_float64: ET_STORAGE_REAL_64
+			l_store_float32: ET_STORAGE_REAL_32
+			l_store_int64: ET_STORAGE_INT_64
+			l_store_int32: ET_STORAGE_INT_32
+			l_store_bool: ET_STORAGE_BOOL
+		do
+			shape := a_shape.deep_twin
+			l_strides := calculate_contiguous_strides (a_shape)
+			strides := l_strides
+			offset := 0
+			l_count := calculate_product (a_shape)
+
+			if a_dtype.is_float64 then
+				create l_store_float64.make (l_count)
+				storage := l_store_float64
+			elseif a_dtype.is_float32 then
+				create l_store_float32.make (l_count)
+				storage := l_store_float32
+			elseif a_dtype.is_int64 then
+				create l_store_int64.make (l_count)
+				storage := l_store_int64
+			elseif a_dtype.is_int32 then
+				create l_store_int32.make (l_count)
+				storage := l_store_int32
+			else
+				-- By elimination: a_dtype.is_bool
+				create l_store_bool.make (l_count)
+				storage := l_store_bool
+			end
+
+			create device.make_cpu
+			dtype := a_dtype
+		ensure
+			shape_set: shape.count = a_shape.count
+		end
+
+	make_ones_with_dtype (a_shape: ARRAY [INTEGER_32]; a_dtype: ET_DTYPE)
+			-- Create a new ONE-initialized tensor of specific dtype.
+			-- `a_dtype` is guaranteed valid by `ET_DTYPE` invariant,
+			-- so no exception branch is needed.
+		require
+			shape_lower_one: a_shape.lower = 1
+		local
+			l_count: INTEGER_32
+			l_strides: ARRAY [INTEGER_32]
+			i: INTEGER_32
+			l_store_float64: ET_STORAGE_REAL_64
+			l_store_float32: ET_STORAGE_REAL_32
+			l_store_int64: ET_STORAGE_INT_64
+			l_store_int32: ET_STORAGE_INT_32
+			l_store_bool: ET_STORAGE_BOOL
+		do
+			shape := a_shape.deep_twin
+			l_strides := calculate_contiguous_strides (a_shape)
+			strides := l_strides
+			offset := 0
+			l_count := calculate_product (a_shape)
+
+			if a_dtype.is_float64 then
+				create l_store_float64.make (l_count)
+				from i := 1 until i > l_count loop
+					l_store_float64.put_real_64 (1.0, i)
+					i := i + 1
+				end
+				storage := l_store_float64
+			elseif a_dtype.is_float32 then
+				create l_store_float32.make (l_count)
+				from i := 1 until i > l_count loop
+					l_store_float32.put_real_32 (1.0, i)
+					i := i + 1
+				end
+				storage := l_store_float32
+			elseif a_dtype.is_int64 then
+				create l_store_int64.make (l_count)
+				from i := 1 until i > l_count loop
+					l_store_int64.put_int_64 ({INTEGER_64} 1, i)
+					i := i + 1
+				end
+				storage := l_store_int64
+			elseif a_dtype.is_int32 then
+				create l_store_int32.make (l_count)
+				from i := 1 until i > l_count loop
+					l_store_int32.put_int_32 (1, i)
+					i := i + 1
+				end
+				storage := l_store_int32
+			else
+				-- By elimination: a_dtype.is_bool
+				create l_store_bool.make (l_count)
+				from i := 1 until i > l_count loop
+					l_store_bool.put_boolean (True, i)
+					i := i + 1
+				end
+				storage := l_store_bool
+			end
+
+			create device.make_cpu
+			dtype := a_dtype
 		ensure
 			shape_set: shape.count = a_shape.count
 		end
@@ -141,6 +252,12 @@ feature -- Autograd Props
 		do
 			requires_grad := val
 		end
+
+	set_dtype (a_dtype: ET_DTYPE)
+			-- Set the data type of this tensor.
+		do
+			dtype := a_dtype
+		end
 		
 	backward
 			-- Trigger backpropagation.
@@ -159,24 +276,64 @@ feature -- Math Operations (with strict Contracts)
 			-- Element-wise addition.
 		require
 			same_shape: is_broadcastable (other.shape)
+			same_dtype: dtype ~ other.dtype
 		local
 			l_strides, br_shape: ARRAY [INTEGER_32]
-			l_store: ET_STORAGE_REAL_64
+			l_store: ET_STORAGE
+			l_store_f64: ET_STORAGE_REAL_64
+			l_store_f32: ET_STORAGE_REAL_32
+			l_store_i32: ET_STORAGE_INT_32
+			l_store_bool: ET_STORAGE_BOOL
 			l_count, i, idx_self, idx_other: INTEGER_32
 		do
 			br_shape := broadcast_shape (shape, other.shape)
 			l_count := calculate_product (br_shape)
-			create l_store.make (l_count)
 			l_strides := calculate_contiguous_strides (br_shape)
 			
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
-				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
-				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) + other.storage.item_as_real_64 (other.offset + idx_other + 1), i)
-				i := i + 1
+			if dtype.is_float64 then
+				create l_store_f64.make (l_count)
+				l_store := l_store_f64
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+					l_store_f64.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) + other.storage.item_as_real_64 (other.offset + idx_other + 1), i)
+					i := i + 1
+				end
+			elseif dtype.is_float32 then
+				create l_store_f32.make (l_count)
+				l_store := l_store_f32
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+					l_store_f32.put_real_32 (storage.item_as_real_32 (offset + idx_self + 1) + other.storage.item_as_real_32 (other.offset + idx_other + 1), i)
+					i := i + 1
+				end
+			elseif dtype.is_int32 then
+				create l_store_i32.make (l_count)
+				l_store := l_store_i32
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+					l_store_i32.put_int_32 (storage.item_as_int_32 (offset + idx_self + 1) + other.storage.item_as_int_32 (other.offset + idx_other + 1), i)
+					i := i + 1
+				end
+			elseif dtype.is_bool then
+				create l_store_bool.make (l_count)
+				l_store := l_store_bool
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+					l_store_bool.put_boolean (storage.item_as_boolean (offset + idx_self + 1) or other.storage.item_as_boolean (other.offset + idx_other + 1), i)
+					i := i + 1
+				end
+			else
+				(create {EXCEPTIONS}).raise ("Unsupported dtype for addition")
+				create l_store_f64.make (0)
+				l_store := l_store_f64
 			end
 			
 			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
+			Result.dtype.copy(dtype)
 		ensure
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
 		end
@@ -186,6 +343,7 @@ feature -- Math Operations (with strict Contracts)
 		require
 			not_requires_grad: not requires_grad
 			same_shape: is_broadcastable (other.shape)
+			same_dtype: dtype ~ other.dtype
 		local
 			br_shape: ARRAY [INTEGER_32]
 			l_count, i, idx_self, idx_other: INTEGER_32
@@ -193,11 +351,44 @@ feature -- Math Operations (with strict Contracts)
 			br_shape := broadcast_shape (shape, other.shape)
 			l_count := calculate_product (br_shape)
 			
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
-				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
-				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) + other.storage.item_as_real_64 (other.offset + idx_other + 1), offset + idx_self + 1)
-				i := i + 1
+			if dtype.is_float64 then
+				if attached {ET_STORAGE_REAL_64} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						s.put_real_64 (s.item_as_real_64 (offset + idx_self + 1) + other.storage.item_as_real_64 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_float32 then
+				if attached {ET_STORAGE_REAL_32} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						s.put_real_32 (s.item_as_real_32 (offset + idx_self + 1) + other.storage.item_as_real_32 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_int32 then
+				if attached {ET_STORAGE_INT_32} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						s.put_int_32 (s.item_as_int_32 (offset + idx_self + 1) + other.storage.item_as_int_32 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_bool then
+				if attached {ET_STORAGE_BOOL} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						s.put_boolean (s.item_as_boolean (offset + idx_self + 1) or other.storage.item_as_boolean (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			else
+				(create {EXCEPTIONS}).raise ("Unsupported dtype for plus_in_place")
 			end
 		end
 
@@ -205,20 +396,38 @@ feature -- Math Operations (with strict Contracts)
 			-- Element-wise addition with a scalar.
 		local
 			l_strides: ARRAY [INTEGER_32]
-			l_store: ET_STORAGE_REAL_64
+			l_store: ET_STORAGE
+			l_store_f64: ET_STORAGE_REAL_64
+			l_store_f32: ET_STORAGE_REAL_32
 			l_count, i, idx_self: INTEGER_32
 		do
 			l_count := calculate_product (shape)
-			create l_store.make (l_count)
 			l_strides := calculate_contiguous_strides (shape)
 			
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, shape)
-				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) + val, i)
-				i := i + 1
+			if dtype.is_float64 then
+				create l_store_f64.make (l_count)
+				l_store := l_store_f64
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, shape)
+					l_store_f64.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) + val, i)
+					i := i + 1
+				end
+			elseif dtype.is_float32 then
+				create l_store_f32.make (l_count)
+				l_store := l_store_f32
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, shape)
+					l_store_f32.put_real_32 (storage.item_as_real_32 (offset + idx_self + 1) + val.truncated_to_real, i)
+					i := i + 1
+				end
+			else
+				(create {EXCEPTIONS}).raise ("plus_scalar only supports float tensors currently")
+				create l_store_f64.make (0)
+				l_store := l_store_f64
 			end
 			
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
+			Result.dtype.copy(dtype)
 		end
 
 	plus_scalar_in_place (val: REAL_64)
@@ -227,12 +436,28 @@ feature -- Math Operations (with strict Contracts)
 			not_requires_grad: not requires_grad
 		local
 			l_count, i, idx_self: INTEGER_32
+
 		do
 			l_count := calculate_product (shape)
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, shape)
-				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) + val, offset + idx_self + 1)
-				i := i + 1
+			
+			if dtype.is_float64 then
+				if attached {ET_STORAGE_REAL_64} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, shape)
+						s.put_real_64 (s.item_as_real_64 (offset + idx_self + 1) + val, offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_float32 then
+				if attached {ET_STORAGE_REAL_32} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, shape)
+						s.put_real_32 (s.item_as_real_32 (offset + idx_self + 1) + val.truncated_to_real, offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			else
+				(create {EXCEPTIONS}).raise ("plus_scalar_in_place only supports float tensors currently")
 			end
 		end
 
@@ -240,6 +465,7 @@ feature -- Math Operations (with strict Contracts)
 			-- Matrix multiplication (supports 1D dot, 2D matmul, and N-D batched matmul).
 		require
 			valid_operands: rank >= 1 and other.rank >= 1
+			same_dtype: dtype ~ other.dtype
 		local
 			l_res_shape: ARRAY [INTEGER_32]
 			l_res_store: ET_STORAGE_REAL_64
@@ -255,6 +481,10 @@ feature -- Math Operations (with strict Contracts)
 			idx_a_batch, idx_b_batch: INTEGER_32
 			l_dot: REAL_64
 		do
+			if not dtype.is_float64 then
+				(create {EXCEPTIONS}).raise ("matmul currently only supports float64 due to BLAS dgemm backend")
+			end
+			
 			if rank = 1 and other.rank = 1 then
 				-- 1D dot product
 				l_k := shape [1]
@@ -371,24 +601,64 @@ feature -- Math Operations (with strict Contracts)
 			-- Element-wise multiplication.
 		require
 			same_shape: is_broadcastable (other.shape)
+			same_dtype: dtype ~ other.dtype
 		local
 			l_strides, br_shape: ARRAY [INTEGER_32]
-			l_store: ET_STORAGE_REAL_64
+			l_store: ET_STORAGE
+			l_store_f64: ET_STORAGE_REAL_64
+			l_store_f32: ET_STORAGE_REAL_32
+			l_store_i32: ET_STORAGE_INT_32
+			l_store_bool: ET_STORAGE_BOOL
 			l_count, i, idx_self, idx_other: INTEGER_32
 		do
 			br_shape := broadcast_shape (shape, other.shape)
 			l_count := calculate_product (br_shape)
-			create l_store.make (l_count)
 			l_strides := calculate_contiguous_strides (br_shape)
 			
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
-				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
-				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) * other.storage.item_as_real_64 (other.offset + idx_other + 1), i)
-				i := i + 1
+			if dtype.is_float64 then
+				create l_store_f64.make (l_count)
+				l_store := l_store_f64
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+					l_store_f64.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) * other.storage.item_as_real_64 (other.offset + idx_other + 1), i)
+					i := i + 1
+				end
+			elseif dtype.is_float32 then
+				create l_store_f32.make (l_count)
+				l_store := l_store_f32
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+					l_store_f32.put_real_32 (storage.item_as_real_32 (offset + idx_self + 1) * other.storage.item_as_real_32 (other.offset + idx_other + 1), i)
+					i := i + 1
+				end
+			elseif dtype.is_int32 then
+				create l_store_i32.make (l_count)
+				l_store := l_store_i32
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+					l_store_i32.put_int_32 (storage.item_as_int_32 (offset + idx_self + 1) * other.storage.item_as_int_32 (other.offset + idx_other + 1), i)
+					i := i + 1
+				end
+			elseif dtype.is_bool then
+				create l_store_bool.make (l_count)
+				l_store := l_store_bool
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+					l_store_bool.put_boolean (storage.item_as_boolean (offset + idx_self + 1) and other.storage.item_as_boolean (other.offset + idx_other + 1), i)
+					i := i + 1
+				end
+			else
+				(create {EXCEPTIONS}).raise ("Unsupported dtype for multiplication")
+				create l_store_f64.make (0)
+				l_store := l_store_f64
 			end
 			
 			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
+			Result.dtype.copy(dtype)
 		ensure
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
 		end
@@ -398,6 +668,7 @@ feature -- Math Operations (with strict Contracts)
 		require
 			not_requires_grad: not requires_grad
 			same_shape: is_broadcastable (other.shape)
+			same_dtype: dtype ~ other.dtype
 		local
 			br_shape: ARRAY [INTEGER_32]
 			l_count, i, idx_self, idx_other: INTEGER_32
@@ -405,11 +676,44 @@ feature -- Math Operations (with strict Contracts)
 			br_shape := broadcast_shape (shape, other.shape)
 			l_count := calculate_product (br_shape)
 			
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
-				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
-				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) * other.storage.item_as_real_64 (other.offset + idx_other + 1), offset + idx_self + 1)
-				i := i + 1
+			if dtype.is_float64 then
+				if attached {ET_STORAGE_REAL_64} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						s.put_real_64 (s.item_as_real_64 (offset + idx_self + 1) * other.storage.item_as_real_64 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_float32 then
+				if attached {ET_STORAGE_REAL_32} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						s.put_real_32 (s.item_as_real_32 (offset + idx_self + 1) * other.storage.item_as_real_32 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_int32 then
+				if attached {ET_STORAGE_INT_32} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						s.put_int_32 (s.item_as_int_32 (offset + idx_self + 1) * other.storage.item_as_int_32 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_bool then
+				if attached {ET_STORAGE_BOOL} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						s.put_boolean (s.item_as_boolean (offset + idx_self + 1) and other.storage.item_as_boolean (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			else
+				(create {EXCEPTIONS}).raise ("Unsupported dtype for mul_in_place")
 			end
 		end
 
@@ -417,20 +721,38 @@ feature -- Math Operations (with strict Contracts)
 			-- Element-wise multiplication with a scalar.
 		local
 			l_strides: ARRAY [INTEGER_32]
-			l_store: ET_STORAGE_REAL_64
+			l_store: ET_STORAGE
+			l_store_f64: ET_STORAGE_REAL_64
+			l_store_f32: ET_STORAGE_REAL_32
 			l_count, i, idx_self: INTEGER_32
 		do
 			l_count := calculate_product (shape)
-			create l_store.make (l_count)
 			l_strides := calculate_contiguous_strides (shape)
 			
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, shape)
-				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) * val, i)
-				i := i + 1
+			if dtype.is_float64 then
+				create l_store_f64.make (l_count)
+				l_store := l_store_f64
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, shape)
+					l_store_f64.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) * val, i)
+					i := i + 1
+				end
+			elseif dtype.is_float32 then
+				create l_store_f32.make (l_count)
+				l_store := l_store_f32
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, shape)
+					l_store_f32.put_real_32 (storage.item_as_real_32 (offset + idx_self + 1) * val.truncated_to_real, i)
+					i := i + 1
+				end
+			else
+				(create {EXCEPTIONS}).raise ("mul_scalar only supports float tensors currently")
+				create l_store_f64.make (0)
+				l_store := l_store_f64
 			end
 			
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
+			Result.dtype.copy(dtype)
 		end
 
 	mul_scalar_in_place (val: REAL_64)
@@ -439,12 +761,28 @@ feature -- Math Operations (with strict Contracts)
 			not_requires_grad: not requires_grad
 		local
 			l_count, i, idx_self: INTEGER_32
+
 		do
 			l_count := calculate_product (shape)
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, shape)
-				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) * val, offset + idx_self + 1)
-				i := i + 1
+			
+			if dtype.is_float64 then
+				if attached {ET_STORAGE_REAL_64} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, shape)
+						s.put_real_64 (s.item_as_real_64 (offset + idx_self + 1) * val, offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_float32 then
+				if attached {ET_STORAGE_REAL_32} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, shape)
+						s.put_real_32 (s.item_as_real_32 (offset + idx_self + 1) * val.truncated_to_real, offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			else
+				(create {EXCEPTIONS}).raise ("mul_scalar_in_place only supports float tensors currently")
 			end
 		end
 
@@ -452,24 +790,54 @@ feature -- Math Operations (with strict Contracts)
 			-- Element-wise division.
 		require
 			same_shape: is_broadcastable (other.shape)
+			same_dtype: dtype ~ other.dtype
 		local
 			l_strides, br_shape: ARRAY [INTEGER_32]
-			l_store: ET_STORAGE_REAL_64
+			l_store: ET_STORAGE
+			l_store_f64: ET_STORAGE_REAL_64
+			l_store_f32: ET_STORAGE_REAL_32
+			l_store_i32: ET_STORAGE_INT_32
 			l_count, i, idx_self, idx_other: INTEGER_32
 		do
 			br_shape := broadcast_shape (shape, other.shape)
 			l_count := calculate_product (br_shape)
-			create l_store.make (l_count)
 			l_strides := calculate_contiguous_strides (br_shape)
 			
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
-				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
-				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) / other.storage.item_as_real_64 (other.offset + idx_other + 1), i)
-				i := i + 1
+			if dtype.is_float64 then
+				create l_store_f64.make (l_count)
+				l_store := l_store_f64
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+					l_store_f64.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) / other.storage.item_as_real_64 (other.offset + idx_other + 1), i)
+					i := i + 1
+				end
+			elseif dtype.is_float32 then
+				create l_store_f32.make (l_count)
+				l_store := l_store_f32
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+					l_store_f32.put_real_32 (storage.item_as_real_32 (offset + idx_self + 1) / other.storage.item_as_real_32 (other.offset + idx_other + 1), i)
+					i := i + 1
+				end
+			elseif dtype.is_int32 then
+				create l_store_i32.make (l_count)
+				l_store := l_store_i32
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+					l_store_i32.put_int_32 (storage.item_as_int_32 (offset + idx_self + 1) // other.storage.item_as_int_32 (other.offset + idx_other + 1), i)
+					i := i + 1
+				end
+			else
+				(create {EXCEPTIONS}).raise ("Unsupported dtype for division")
+				create l_store_f64.make (0)
+				l_store := l_store_f64
 			end
 			
 			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
+			Result.dtype.copy(dtype)
 		ensure
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
 		end
@@ -479,18 +847,44 @@ feature -- Math Operations (with strict Contracts)
 		require
 			not_requires_grad: not requires_grad
 			same_shape: is_broadcastable (other.shape)
+			same_dtype: dtype ~ other.dtype
 		local
 			br_shape: ARRAY [INTEGER_32]
 			l_count, i, idx_self, idx_other: INTEGER_32
+
 		do
 			br_shape := broadcast_shape (shape, other.shape)
 			l_count := calculate_product (br_shape)
 			
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, br_shape)
-				idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
-				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) / other.storage.item_as_real_64 (other.offset + idx_other + 1), offset + idx_self + 1)
-				i := i + 1
+			if dtype.is_float64 then
+				if attached {ET_STORAGE_REAL_64} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						s.put_real_64 (s.item_as_real_64 (offset + idx_self + 1) / other.storage.item_as_real_64 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_float32 then
+				if attached {ET_STORAGE_REAL_32} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						s.put_real_32 (s.item_as_real_32 (offset + idx_self + 1) / other.storage.item_as_real_32 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_int32 then
+				if attached {ET_STORAGE_INT_32} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						s.put_int_32 (s.item_as_int_32 (offset + idx_self + 1) // other.storage.item_as_int_32 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			else
+				(create {EXCEPTIONS}).raise ("Unsupported dtype for div_in_place")
 			end
 		end
 
@@ -498,20 +892,38 @@ feature -- Math Operations (with strict Contracts)
 			-- Element-wise division by a scalar.
 		local
 			l_strides: ARRAY [INTEGER_32]
-			l_store: ET_STORAGE_REAL_64
+			l_store: ET_STORAGE
+			l_store_f64: ET_STORAGE_REAL_64
+			l_store_f32: ET_STORAGE_REAL_32
 			l_count, i, idx_self: INTEGER_32
 		do
 			l_count := calculate_product (shape)
-			create l_store.make (l_count)
 			l_strides := calculate_contiguous_strides (shape)
 			
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, shape)
-				l_store.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) / val, i)
-				i := i + 1
+			if dtype.is_float64 then
+				create l_store_f64.make (l_count)
+				l_store := l_store_f64
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, shape)
+					l_store_f64.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) / val, i)
+					i := i + 1
+				end
+			elseif dtype.is_float32 then
+				create l_store_f32.make (l_count)
+				l_store := l_store_f32
+				from i := 1 until i > l_count loop
+					idx_self := linear_index_to_offset (i, shape, strides, shape)
+					l_store_f32.put_real_32 (storage.item_as_real_32 (offset + idx_self + 1) / val.truncated_to_real, i)
+					i := i + 1
+				end
+			else
+				(create {EXCEPTIONS}).raise ("div_scalar only supports float tensors currently")
+				create l_store_f64.make (0)
+				l_store := l_store_f64
 			end
 			
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
+			Result.dtype.copy(dtype)
 		end
 
 	div_scalar_in_place (val: REAL_64)
@@ -520,12 +932,28 @@ feature -- Math Operations (with strict Contracts)
 			not_requires_grad: not requires_grad
 		local
 			l_count, i, idx_self: INTEGER_32
+
 		do
 			l_count := calculate_product (shape)
-			from i := 1 until i > l_count loop
-				idx_self := linear_index_to_offset (i, shape, strides, shape)
-				storage.put_real_64 (storage.item_as_real_64 (offset + idx_self + 1) / val, offset + idx_self + 1)
-				i := i + 1
+			
+			if dtype.is_float64 then
+				if attached {ET_STORAGE_REAL_64} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, shape)
+						s.put_real_64 (s.item_as_real_64 (offset + idx_self + 1) / val, offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_float32 then
+				if attached {ET_STORAGE_REAL_32} storage as s then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, shape)
+						s.put_real_32 (s.item_as_real_32 (offset + idx_self + 1) / val.truncated_to_real, offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			else
+				(create {EXCEPTIONS}).raise ("div_scalar_in_place only supports float tensors currently")
 			end
 		end
 
@@ -747,26 +1175,63 @@ feature -- Reductions
 		local
 			l_res_shape, l_final_shape: ARRAY [INTEGER_32]
 			l_res_strides: ARRAY [INTEGER_32]
-			l_res_store: ET_STORAGE_REAL_64
+			l_res_store: ET_STORAGE
+			l_res_store_f64: ET_STORAGE_REAL_64
+			l_res_store_f32: ET_STORAGE_REAL_32
+			l_res_store_i32: ET_STORAGE_INT_32
 			i, k, idx_src: INTEGER_32
-			l_sum: REAL_64
+			l_sum_f64: REAL_64
+			l_sum_f32: REAL_32
+			l_sum_i32: INTEGER_32
 			l_count: INTEGER_32
 		do
 			l_res_shape := shape.deep_twin
 			l_res_shape [dim] := 1
-			
 			l_count := calculate_product (l_res_shape)
-			create l_res_store.make (l_count)
 			
-			from i := 1 until i > l_count loop
-				idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
-				l_sum := 0.0
-				from k := 0 until k >= shape [dim] loop
-					l_sum := l_sum + storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
-					k := k + 1
+			if dtype.is_float64 then
+				create l_res_store_f64.make (l_count)
+				l_res_store := l_res_store_f64
+				from i := 1 until i > l_count loop
+					idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
+					l_sum_f64 := 0.0
+					from k := 0 until k >= shape [dim] loop
+						l_sum_f64 := l_sum_f64 + storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
+						k := k + 1
+					end
+					l_res_store_f64.put_real_64 (l_sum_f64, i)
+					i := i + 1
 				end
-				l_res_store.put_real_64 (l_sum, i)
-				i := i + 1
+			elseif dtype.is_float32 then
+				create l_res_store_f32.make (l_count)
+				l_res_store := l_res_store_f32
+				from i := 1 until i > l_count loop
+					idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
+					l_sum_f32 := 0.0
+					from k := 0 until k >= shape [dim] loop
+						l_sum_f32 := l_sum_f32 + storage.item_as_real_32 (offset + idx_src + k * strides [dim] + 1)
+						k := k + 1
+					end
+					l_res_store_f32.put_real_32 (l_sum_f32, i)
+					i := i + 1
+				end
+			elseif dtype.is_int32 then
+				create l_res_store_i32.make (l_count)
+				l_res_store := l_res_store_i32
+				from i := 1 until i > l_count loop
+					idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
+					l_sum_i32 := 0
+					from k := 0 until k >= shape [dim] loop
+						l_sum_i32 := l_sum_i32 + storage.item_as_int_32 (offset + idx_src + k * strides [dim] + 1)
+						k := k + 1
+					end
+					l_res_store_i32.put_int_32 (l_sum_i32, i)
+					i := i + 1
+				end
+			else
+				(create {EXCEPTIONS}).raise ("Unsupported dtype for sum_dim")
+				create l_res_store_f64.make (0)
+				l_res_store := l_res_store_f64
 			end
 			
 			if keep_dim then
@@ -786,6 +1251,7 @@ feature -- Reductions
 			
 			l_res_strides := calculate_contiguous_strides (l_final_shape)
 			create Result.make_from_storage (l_res_store, l_final_shape, l_res_strides, 0)
+			Result.dtype.copy(dtype)
 		ensure
 			valid_result: Result /= Void
 		end
@@ -810,27 +1276,67 @@ feature -- Reductions
 		local
 			l_res_shape, l_final_shape: ARRAY [INTEGER_32]
 			l_res_strides: ARRAY [INTEGER_32]
-			l_res_store: ET_STORAGE_REAL_64
+			l_res_store: ET_STORAGE
+			l_res_store_f64: ET_STORAGE_REAL_64
+			l_res_store_f32: ET_STORAGE_REAL_32
+			l_res_store_i32: ET_STORAGE_INT_32
 			i, k, idx_src: INTEGER_32
-			l_max, l_val: REAL_64
+			l_max_f64, l_val_f64: REAL_64
+			l_max_f32, l_val_f32: REAL_32
+			l_max_i32, l_val_i32: INTEGER_32
 			l_count: INTEGER_32
 		do
 			l_res_shape := shape.deep_twin
 			l_res_shape [dim] := 1
 			
 			l_count := calculate_product (l_res_shape)
-			create l_res_store.make (l_count)
 			
-			from i := 1 until i > l_count loop
-				idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
-				l_max := -1.7976931348623157e+308
-				from k := 0 until k >= shape [dim] loop
-					l_val := storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
-					if l_val > l_max or k = 0 then l_max := l_val end
-					k := k + 1
+			if dtype.is_float64 then
+				create l_res_store_f64.make (l_count)
+				l_res_store := l_res_store_f64
+				from i := 1 until i > l_count loop
+					idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
+					l_max_f64 := -1.7976931348623157e+308
+					from k := 0 until k >= shape [dim] loop
+						l_val_f64 := storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
+						if l_val_f64 > l_max_f64 or k = 0 then l_max_f64 := l_val_f64 end
+						k := k + 1
+					end
+					l_res_store_f64.put_real_64 (l_max_f64, i)
+					i := i + 1
 				end
-				l_res_store.put_real_64 (l_max, i)
-				i := i + 1
+			elseif dtype.is_float32 then
+				create l_res_store_f32.make (l_count)
+				l_res_store := l_res_store_f32
+				from i := 1 until i > l_count loop
+					idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
+					l_max_f32 := {REAL_32} -3.4028235e+38
+					from k := 0 until k >= shape [dim] loop
+						l_val_f32 := storage.item_as_real_32 (offset + idx_src + k * strides [dim] + 1)
+						if l_val_f32 > l_max_f32 or k = 0 then l_max_f32 := l_val_f32 end
+						k := k + 1
+					end
+					l_res_store_f32.put_real_32 (l_max_f32, i)
+					i := i + 1
+				end
+			elseif dtype.is_int32 then
+				create l_res_store_i32.make (l_count)
+				l_res_store := l_res_store_i32
+				from i := 1 until i > l_count loop
+					idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
+					l_max_i32 := {INTEGER_32}.min_value
+					from k := 0 until k >= shape [dim] loop
+						l_val_i32 := storage.item_as_int_32 (offset + idx_src + k * strides [dim] + 1)
+						if l_val_i32 > l_max_i32 or k = 0 then l_max_i32 := l_val_i32 end
+						k := k + 1
+					end
+					l_res_store_i32.put_int_32 (l_max_i32, i)
+					i := i + 1
+				end
+			else
+				(create {EXCEPTIONS}).raise ("Unsupported dtype for max_dim")
+				create l_res_store_f64.make (0)
+				l_res_store := l_res_store_f64
 			end
 			
 			if keep_dim then
@@ -848,6 +1354,7 @@ feature -- Reductions
 			
 			l_res_strides := calculate_contiguous_strides (l_final_shape)
 			create Result.make_from_storage (l_res_store, l_final_shape, l_res_strides, 0)
+			Result.dtype.copy(dtype)
 		end
 
 	softmax (dim: INTEGER_32): ET_TENSOR

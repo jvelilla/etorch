@@ -77,7 +77,6 @@ feature -- Tests
 		local
 			p: ET_TENSOR
 			g: ET_TENSOR
-			p_store, g_store: ET_STORAGE_REAL_64
 			optim: ET_ADAM
 			params: ARRAYED_LIST [ET_TENSOR]
 		do
@@ -116,7 +115,6 @@ feature -- Tests
 			state: HASH_TABLE [ET_TENSOR, STRING]
 			sl: ET_SAVE_LOAD
 			loaded_state: detachable HASH_TABLE [ET_TENSOR, STRING]
-			loaded_p: detachable ET_TENSOR
 		do
 			print ("%N[1.4] Model Serialization%N")
 			
@@ -145,7 +143,7 @@ feature -- Tests
 
 	test_autograd_chain
 		local
-			t1, t2, t_out: ET_TENSOR
+			t1, t2: ET_TENSOR
 			v1, v2, v_out: ET_VALUE
 			l_add: ET_ADD_FUNCTION
 			inputs: ARRAY [ET_VALUE]
