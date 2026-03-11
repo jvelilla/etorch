@@ -408,14 +408,14 @@ feature -- DType Tests
 			c := a.matmul (b)
 			assert ("I32 MATMUL Result shape", c.shape [1] = 2 and c.shape [2] = 2)
 			assert ("I32 MATMUL dtype is int32", c.dtype.is_int32)
-			-- Generic fallback produces REAL_64 storage, but dtype is set to int32
-			if attached {ET_STORAGE_REAL_64} c.storage as cs then
-				assert ("C[1,1] = 4", cs.item_as_real_64 (1).rounded = 4)
-				assert ("C[1,2] = 4", cs.item_as_real_64 (2).rounded = 4)
-				assert ("C[2,1] = 10", cs.item_as_real_64 (3).rounded = 10)
-				assert ("C[2,2] = 8", cs.item_as_real_64 (4).rounded = 8)
+			-- Generic fallback produces INT_64 storage for integer dtypes
+			if attached {ET_STORAGE_INT_64} c.storage as cs then
+				assert ("C[1,1] = 4", cs.item_as_int_64 (1) = 4)
+				assert ("C[1,2] = 4", cs.item_as_int_64 (2) = 4)
+				assert ("C[2,1] = 10", cs.item_as_int_64 (3) = 10)
+				assert ("C[2,2] = 8", cs.item_as_int_64 (4) = 8)
 			else
-				assert ("Storage should be real 64 (generic fallback)", False)
+				assert ("Storage should be INT_64 (generic fallback for int32 input)", False)
 			end
 		end
 

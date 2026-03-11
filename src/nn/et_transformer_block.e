@@ -21,6 +21,9 @@ feature -- Initialization
 			create attn.make (n_embd, n_head, dropout)
 			create ln_2.make (n_embd, 1.0e-5)
 			
+			-- Note: `dropout` is accepted for API compatibility with PyTorch,
+			-- but is not applied in `forward` since this is an inference-only framework.
+
 			-- MLP equivalent to: [Linear(n_embd, 4*n_embd), GELU, Linear(4*n_embd, n_embd)]
 			-- Keeping it straightforward using two linear layers as a placeholder
 			create mlp_fc1.make (n_embd, 4 * n_embd)

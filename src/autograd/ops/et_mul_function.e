@@ -36,6 +36,8 @@ feature -- Operational
 
 	backward (grad_output: ET_TENSOR): ARRAY [ET_TENSOR]
 			-- Computes dL/da = grad_output * b, and dL/db = grad_output * a.
+		require else
+			inputs_saved: saved_a /= Void and saved_b /= Void
 		do
 			create Result.make_empty
 			if attached saved_a as a and attached saved_b as b then

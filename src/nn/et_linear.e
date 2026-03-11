@@ -104,19 +104,41 @@ feature {NONE} -- Helpers
 
 	add_bias (res_2d: ET_TENSOR; b: ET_TENSOR): ET_TENSOR
 			-- Adds 1D bias to 2D tensor (broadcasting over rows).
+			-- Dispatches on float64 and float32 storage types correctly.
 		local
 			i, res_size, b_size: INTEGER_32
-			l_store: ET_STORAGE_REAL_64
+			l_store_f64: ET_STORAGE_REAL_64
+			l_store_f32: ET_STORAGE_REAL_32
+			l_strides: ARRAY [INTEGER_32]
 		do
 			res_size := res_2d.numel
 			b_size := b.numel
-			create l_store.make (res_size)
-			from i := 1 until i > res_size loop
-				-- (i - 1) \\ b_size calculates the column index
-				l_store.put_real_64 (res_2d.storage.item_as_real_64 (res_2d.offset + i) + b.storage.item_as_real_64 (b.offset + ((i - 1) \\ b_size) + 1), i)
-				i := i + 1
+			l_strides := res_2d.strides.deep_twin
+
+			if res_2d.dtype.is_float32 then
+				create l_store_f32.make (res_size)
+				from i := 1 until i > res_size loop
+					l_store_f32.put_real_32 (
+						res_2d.storage.item_as_real_32 (res_2d.offset + i) +
+						b.storage.item_as_real_32 (b.offset + ((i - 1) \\ b_size) + 1),
+						i)
+					i := i + 1
+				end
+				create Result.make_from_storage (l_store_f32, res_2d.shape.deep_twin, l_strides, 0)
+				Result.set_dtype (res_2d.dtype)
+			else
+				-- Default: float64
+				create l_store_f64.make (res_size)
+				from i := 1 until i > res_size loop
+					l_store_f64.put_real_64 (
+						res_2d.storage.item_as_real_64 (res_2d.offset + i) +
+						b.storage.item_as_real_64 (b.offset + ((i - 1) \\ b_size) + 1),
+						i)
+					i := i + 1
+				end
+				create Result.make_from_storage (l_store_f64, res_2d.shape.deep_twin, l_strides, 0)
+				Result.set_dtype (res_2d.dtype)
 			end
-			create Result.make_from_storage (l_store, res_2d.shape.deep_twin, res_2d.strides.deep_twin, 0)
 		end
 
 end
