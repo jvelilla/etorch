@@ -63,8 +63,7 @@ feature -- Operation
 
 			-- Sublayer 2: MLP
 			x_norm2 := ln_2.forward (x_res)
-			mlp_out := mlp_fc1.forward (x_norm2)
-			-- (Missing GELU here since it's not extracted yet)
+			mlp_out := mlp_fc1.forward (x_norm2).gelu
 			mlp_out := mlp_fc2.forward (mlp_out)
 
 			Result := x_res.plus (mlp_out)
