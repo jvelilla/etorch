@@ -1407,6 +1407,32 @@ feature -- Math Operations (continued)
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
 		end
 
+	relu: ET_TENSOR
+			-- Rectified Linear Unit (element-wise).
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i, idx_self: INTEGER_32
+			l_val: REAL_64
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+			
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				l_val := storage.item_as_real_64 (offset + idx_self + 1)
+				if l_val > 0.0 then
+					l_store.put_real_64 (l_val, i)
+				else
+					l_store.put_real_64 (0.0, i)
+				end
+				i := i + 1
+			end
+			
+			create Result.make_from_storage (l_store, shape, l_strides, 0)
+		end
+
 feature -- Reductions
 
 	sum (dims: ARRAY [INTEGER_32]; keep_dim: BOOLEAN): ET_TENSOR
@@ -2067,6 +2093,62 @@ feature -- Helpers
 				i := i - 1
 			end
 		end
+
+	copy_from (other: ET_TENSOR)
+			-- Deep copies data from `other` into `Current`.
+			-- `Current` and `other` must have perfectly matching shapes.
+		require
+			same_shape: shape ~ other.shape
+			same_dtype: dtype ~ other.dtype
+		local
+			l_count, i, idx_self, idx_other: INTEGER_32
+		do
+			l_count := calculate_product (shape)
+			
+			if dtype.is_float64 then
+				if attached {ET_STORAGE_REAL_64} storage as target_store and then
+				   attached {ET_STORAGE_REAL_64} other.storage as src_store then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, shape)
+						target_store.put_real_64 (src_store.item_as_real_64 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_float32 then
+				if attached {ET_STORAGE_REAL_32} storage as target_store and then
+				   attached {ET_STORAGE_REAL_32} other.storage as src_store then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, shape)
+						target_store.put_real_32 (src_store.item_as_real_32 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			elseif dtype.is_int32 then
+				if attached {ET_STORAGE_INT_32} storage as target_store and then
+				   attached {ET_STORAGE_INT_32} other.storage as src_store then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, shape)
+						target_store.put_int_32 (src_store.item_as_int_32 (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			else
+				if attached {ET_STORAGE_BOOL} storage as target_store and then
+				   attached {ET_STORAGE_BOOL} other.storage as src_store then
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, shape)
+						target_store.put_boolean (src_store.item_as_boolean (other.offset + idx_other + 1), offset + idx_self + 1)
+						i := i + 1
+					end
+				end
+			end
+		end
+
+feature -- Utilities
 
 	calculate_product (arr: ARRAY [INTEGER_32]): INTEGER_32
 			-- Return the product of all elements in the array.

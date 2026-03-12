@@ -100,12 +100,38 @@ feature -- Operation
 			k := k_proj.forward (x)
 			v := v_proj.forward (x)
 			
+			if attached k_cache as kc and then attached v_cache as vc then
+				-- Cache update logic: K and V are still [B, T, C] or [T, C]
+				if cache_pos + T <= max_seq_len then
+					if k.rank = 3 then
+						kc.slice_range (2, cache_pos + 1, T).copy_from (k)
+						vc.slice_range (2, cache_pos + 1, T).copy_from (v)
+					else
+						-- [T, C], reshape cache slice to match
+						kc.slice_range (2, cache_pos + 1, T).view (<<T, C>>).copy_from (k)
+						vc.slice_range (2, cache_pos + 1, T).view (<<T, C>>).copy_from (v)
+					end
+					
+					cache_pos := cache_pos + T
+					
+					-- Then slice OUT the full historical KV for Attention
+					-- We need the extracted k and v to represent [B, cache_pos, C]
+					if k.rank = 3 then
+						k := kc.slice_range (2, 1, cache_pos)
+						v := vc.slice_range (2, 1, cache_pos)
+					else
+						k := kc.slice_range (2, 1, cache_pos).view (<<cache_pos, C>>)
+						v := vc.slice_range (2, 1, cache_pos).view (<<cache_pos, C>>)
+					end
+				end
+			end
+			
 			-- 2. Reshape & Transpose for multi-head computing
 			-- from [B, T, C] to [B, T, n_head, head_size]
 			if query.rank = 3 then
 				query := query.reshape (<<B, T, n_head, head_size>>)
-				k := k.reshape (<<B, T, n_head, head_size>>)
-				v := v.reshape (<<B, T, n_head, head_size>>)
+				k := k.reshape (<<B, k.shape[2], n_head, head_size>>)
+				v := v.reshape (<<B, v.shape[2], n_head, head_size>>)
 				
 				-- from [B, T, n_head, head_size] to [B, n_head, T, head_size]
 				query := query.transpose (2, 3)
@@ -114,22 +140,8 @@ feature -- Operation
 			else
 				-- [T, C] to [T, n_head, head_size] -> [n_head, T, head_size]
 				query := query.reshape (<<T, n_head, head_size>>).transpose (1, 2)
-				k := k.reshape (<<T, n_head, head_size>>).transpose (1, 2)
-				v := v.reshape (<<T, n_head, head_size>>).transpose (1, 2)
-			end
-
-			if attached k_cache as kc and then attached v_cache as vc then
-				-- Cache update logic
-				if cache_pos + T <= max_seq_len then
-					-- In a true impl, we'd slice into the cache here and update it
-					-- kc.slice_range(2, cache_pos + 1, T).copy_from(k)
-					-- vc.slice_range(2, cache_pos + 1, T).copy_from(v)
-					cache_pos := cache_pos + T
-					
-					-- Then slice OUT the full historical KV for Attention
-					-- k := kc.slice_range(2, 1, cache_pos)
-					-- v := vc.slice_range(2, 1, cache_pos)
-				end
+				k := k.reshape (<<k.shape[1], n_head, head_size>>).transpose (1, 2)
+				v := v.reshape (<<v.shape[1], n_head, head_size>>).transpose (1, 2)
 			end
 
 			-- 3. Scaled Dot-Product Attention: softmax((Q * K^T) / sqrt(d_k)) * V
