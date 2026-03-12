@@ -54,11 +54,18 @@ feature -- Core Operation
 
 	forward (x: ET_TENSOR): ET_TENSOR
 			-- Apply layer normalization.
+		local
+			l_mean, l_var: ET_TENSOR
+			l_denom: ET_TENSOR
+			x_norm: ET_TENSOR
 		do
 			-- x_norm = (x - mean) / sqrt(var + eps)
 			-- Result = x_norm * weight + bias
-			-- Placeholder for exact tensor operations until backwards ops are expanded
-			Result := x.plus (bias)
+			l_mean := x.mean_dim (x.rank, True)
+			l_var := x.var_dim (x.rank, False, True)
+			l_denom := l_var.plus_scalar (eps).sqrt_val
+			x_norm := x.minus (l_mean).div (l_denom)
+			Result := x_norm.mul (weight).plus (bias)
 		end
 
 end

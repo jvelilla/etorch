@@ -272,6 +272,25 @@ feature -- Autograd Props
 
 feature -- Math Operations (with strict Contracts)
 
+	minus alias "-" (other: ET_TENSOR): ET_TENSOR
+			-- Element-wise subtraction.
+		require
+			same_shape: is_broadcastable (other.shape)
+			same_dtype: dtype ~ other.dtype
+		do
+			Result := Current + other.mul_scalar (-1.0)
+		ensure
+			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
+		end
+
+	minus_scalar (val: REAL_64): ET_TENSOR
+			-- Element-wise subtraction with a scalar.
+		do
+			Result := plus_scalar (-val)
+		ensure
+			result_shape_correct: Result.shape ~ shape
+		end
+
 	plus alias "+" (other: ET_TENSOR): ET_TENSOR
 			-- Element-wise addition.
 		require
@@ -1579,6 +1598,70 @@ feature -- Reductions
 			l_res := sum_dim (dim, keep_dim)
 			l_N := shape [dim].to_double
 			Result := l_res.mul_scalar (1.0 / l_N)
+		end
+
+	var_dim (dim: INTEGER_32; unbiased: BOOLEAN; keep_dim: BOOLEAN): ET_TENSOR
+			-- Variance reduction over a specific dimension.
+		require
+			valid_dim: dim >= 1 and dim <= rank
+		local
+			l_mean: ET_TENSOR
+			l_res_shape, l_final_shape: ARRAY [INTEGER_32]
+			l_res_strides: ARRAY [INTEGER_32]
+			l_inner, l_outer, i, k, idx_src, idx_res: INTEGER_32
+			l_store: ET_STORAGE_REAL_64
+			mean_val, x_val, sum_sq: REAL_64
+			n_div: REAL_64
+			l_count: INTEGER_32
+		do
+			l_mean := mean_dim (dim, True) -- Keepdim for broadcasting implicitly
+			
+			l_res_shape := shape.deep_twin
+			l_res_shape [dim] := 1
+			l_count := calculate_product (l_res_shape)
+			
+			l_inner := shape [dim]
+			
+			if unbiased then
+				n_div := (l_inner - 1).to_double
+			else
+				n_div := l_inner.to_double
+			end
+			if n_div < 1.0 then n_div := 1.0 end
+			
+			create l_store.make (l_count)
+			from i := 1 until i > l_count loop
+				idx_res := linear_index_to_offset (i, l_res_shape, calculate_contiguous_strides(l_res_shape), l_res_shape)
+				idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
+				
+				-- The mean tensor has shape `l_res_shape`. Its strides are contiguous.
+				mean_val := storage_item_as_real_64_universal (l_mean.storage, l_mean.offset + idx_res + 1)
+				sum_sq := 0.0
+				from k := 0 until k >= l_inner loop
+					x_val := storage_item_as_real_64_universal (storage, offset + idx_src + k * strides [dim] + 1)
+					sum_sq := sum_sq + (x_val - mean_val) * (x_val - mean_val)
+					k := k + 1
+				end
+				l_store.put_real_64 (sum_sq / n_div, i)
+				i := i + 1
+			end
+			
+			if keep_dim then
+				l_final_shape := l_res_shape
+			else
+				create l_final_shape.make_empty
+				from k := 1 until k > l_res_shape.count loop
+					if k /= dim then
+						l_final_shape.force (l_res_shape [k], l_final_shape.count + 1)
+					end
+					k := k + 1
+				end
+				if l_final_shape.is_empty then l_final_shape.force (1, 1) end
+			end
+			
+			l_res_strides := calculate_contiguous_strides (l_final_shape)
+			create Result.make_from_storage (l_store, l_final_shape, l_res_strides, 0)
+			Result.dtype.copy (dtype)
 		end
 
 	max_dim (dim: INTEGER_32; keep_dim: BOOLEAN): ET_TENSOR

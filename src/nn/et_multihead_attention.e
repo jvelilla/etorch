@@ -81,6 +81,9 @@ feature -- Operation
 		local
 			B, T, C: INTEGER_32
 			query, k, v: ET_TENSOR
+			att, att_scores: ET_TENSOR
+			dim_k: REAL_64
+			math: DOUBLE_MATH
 		do
 			query := x
 			if query.rank = 3 then
@@ -92,10 +95,28 @@ feature -- Operation
 			end
 			C := n_embd
 
-			-- Standard QKV projection (Placeholder until exact MHA Math is implemented)
+			-- 1. QKV projection
 			query := q_proj.forward (x)
 			k := k_proj.forward (x)
 			v := v_proj.forward (x)
+			
+			-- 2. Reshape & Transpose for multi-head computing
+			-- from [B, T, C] to [B, T, n_head, head_size]
+			if query.rank = 3 then
+				query := query.reshape (<<B, T, n_head, head_size>>)
+				k := k.reshape (<<B, T, n_head, head_size>>)
+				v := v.reshape (<<B, T, n_head, head_size>>)
+				
+				-- from [B, T, n_head, head_size] to [B, n_head, T, head_size]
+				query := query.transpose (2, 3)
+				k := k.transpose (2, 3)
+				v := v.transpose (2, 3)
+			else
+				-- [T, C] to [T, n_head, head_size] -> [n_head, T, head_size]
+				query := query.reshape (<<T, n_head, head_size>>).transpose (1, 2)
+				k := k.reshape (<<T, n_head, head_size>>).transpose (1, 2)
+				v := v.reshape (<<T, n_head, head_size>>).transpose (1, 2)
+			end
 
 			if attached k_cache as kc and then attached v_cache as vc then
 				-- Cache update logic
@@ -111,8 +132,34 @@ feature -- Operation
 				end
 			end
 
-			-- Out projection (structural placeholder)
-			Result := out_proj.forward (query)
+			-- 3. Scaled Dot-Product Attention: softmax((Q * K^T) / sqrt(d_k)) * V
+			-- K^T: [B, n_head, head_size, T] (or [n_head, head_size, T])
+			if query.rank = 4 then
+				k := k.transpose (3, 4)
+			else
+				k := k.transpose (2, 3)
+			end
+			
+			att_scores := query.matmul (k)
+			create math
+			dim_k := math.sqrt (head_size.to_double)
+			att_scores := att_scores.div_scalar (dim_k)
+			
+			att := att_scores.softmax (att_scores.rank)
+			
+			-- att * V => [B, n_head, T, T] * [B, n_head, T, head_size] => [B, n_head, T, head_size]
+			att := att.matmul (v)
+			
+			-- 4. Re-assemble heads
+			-- [B, n_head, T, head_size] -> [B, T, n_head, head_size] -> [B, T, C]
+			if query.rank = 4 then
+				att := att.transpose (2, 3).contiguous.reshape (<<B, T, C>>)
+			else
+				att := att.transpose (1, 2).contiguous.reshape (<<T, C>>)
+			end
+
+			-- 5. Out projection
+			Result := out_proj.forward (att)
 		ensure then
 			output_shape_matches: Result.shape ~ x.shape
 		end

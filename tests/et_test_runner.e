@@ -16,7 +16,9 @@ feature -- Test classes
 				{ET_TEST_AUTOGRAD},
 				{ET_TEST_TENSOR},
 				{ET_TEST_KV_CACHE},
-				{ET_TEST_SAFE_TENSORS}
+				{ET_TEST_SAFE_TENSORS},
+				{ET_TEST_LAYER_NORM},
+				{ET_TEST_MICROGPT}
 			>>
 		end
 

@@ -18,6 +18,7 @@ feature -- Initialization
 			test_save_load
 			test_autograd_chain
 			test_training_loop
+			test_math
 		end
 
 feature -- Tests
@@ -256,6 +257,19 @@ feature -- Tests
 				print ("Optimized Weight w: " + ws.item_as_real_64 (1).out + "%N")
 				print ("Optimized Bias b: " + bs.item_as_real_64 (1).out + "%N")
 			end
+		end
+
+	test_math
+		local
+			d: REAL_64
+			m: DOUBLE_MATH
+		do
+			print ("%N[1.7] Testing DOUBLE_MATH%N")
+			create m
+			d := m.sqrt (4.0)
+			print ("Sqrt of 4.0: " + d.out + "%N")
+			d := m.exp (1.0)
+			print ("Exp of 1.0: " + d.out + "%N")
 		end
 
 end
