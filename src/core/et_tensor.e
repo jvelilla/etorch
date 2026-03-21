@@ -19,7 +19,8 @@ create
 	make_ones,
 	make_randn,
 	make_zeros_with_dtype,
-	make_ones_with_dtype
+	make_ones_with_dtype,
+	make_randn_with_dtype
 
 feature {NONE} -- Initialization
 
@@ -36,152 +37,71 @@ feature {NONE} -- Initialization
 			offset := a_offset
 			
 			create device.make_cpu
-			create dtype.make_float64
+			if attached {ET_STORAGE_REAL_64} a_storage then
+				create {ET_DTYPE_FLOAT64} dtype
+			elseif attached {ET_STORAGE_REAL_32} a_storage then
+				create {ET_DTYPE_FLOAT32} dtype
+			elseif attached {ET_STORAGE_INT_32} a_storage then
+				create {ET_DTYPE_INT32} dtype
+			elseif attached {ET_STORAGE_INT_64} a_storage then
+				create {ET_DTYPE_INT64} dtype
+			elseif attached {ET_STORAGE_BOOL} a_storage then
+				create {ET_DTYPE_BOOL} dtype
+			else
+				dtype := (create {ET_DTYPE_REGISTRY}).default_float_dtype
+			end
 		ensure
 			storage_set: storage = a_storage
 			offset_set: offset = a_offset
 		end
 
 	make_zeros (a_shape: ARRAY [INTEGER_32])
-			-- Create a new ZERO-initialized tensor of default float64.
+			-- Create a new ZERO-initialized tensor of default float dtype.
 		require
 			shape_lower_one: a_shape.lower = 1
-		local
-			l_count: INTEGER_32
-			l_store: ET_STORAGE_REAL_64
-			l_strides: ARRAY [INTEGER_32]
 		do
-			shape := a_shape.deep_twin
-			l_strides := calculate_contiguous_strides (a_shape)
-			strides := l_strides
-			offset := 0
-			l_count := calculate_product (a_shape)
-			create l_store.make (l_count)
-			storage := l_store
-			create device.make_cpu
-			create dtype.make_float64
+			make_zeros_with_dtype (a_shape, (create {ET_DTYPE_REGISTRY}).default_float_dtype)
 		ensure
 			shape_set: shape.count = a_shape.count
 		end
 
 	make_ones (a_shape: ARRAY [INTEGER_32])
-			-- Create a new ONE-initialized tensor of default float64.
+			-- Create a new ONE-initialized tensor of default float dtype.
 		require
 			shape_lower_one: a_shape.lower = 1
-		local
-			l_count: INTEGER_32
-			l_store: ET_STORAGE_REAL_64
-			l_strides: ARRAY [INTEGER_32]
-			i: INTEGER_32
 		do
-			shape := a_shape.deep_twin
-			l_strides := calculate_contiguous_strides (a_shape)
-			strides := l_strides
-			offset := 0
-			l_count := calculate_product (a_shape)
-			create l_store.make (l_count)
-			from i := 1 until i > l_count loop
-				l_store.put_real_64 (1.0, i)
-				i := i + 1
-			end
-			storage := l_store
-			create device.make_cpu
-			create dtype.make_float64
+			make_ones_with_dtype (a_shape, (create {ET_DTYPE_REGISTRY}).default_float_dtype)
 		ensure
 			shape_set: shape.count = a_shape.count
 		end
 
 	make_randn (a_shape: ARRAY [INTEGER_32])
-			-- Create a new normal-distributed random tensor of default float64.
-			-- Uses Box-Muller transform for standard normal distribution N(0, 1).
+			-- Create a new normal-distributed random tensor of default float dtype.
 		require
 			shape_lower_one: a_shape.lower = 1
-		local
-			l_count: INTEGER_32
-			l_store: ET_STORAGE_REAL_64
-			l_strides: ARRAY [INTEGER_32]
-			i: INTEGER_32
-			l_rand: RANDOM
-			l_time: TIME
-			u1, u2, z0, z1: REAL_64
-			l_math: DOUBLE_MATH
-			pi_2: REAL_64
 		do
-			shape := a_shape.deep_twin
-			l_strides := calculate_contiguous_strides (a_shape)
-			strides := l_strides
-			offset := 0
-			l_count := calculate_product (a_shape)
-			create l_store.make (l_count)
-			create device.make_cpu
-			create dtype.make_float64
-			
-			create l_time.make_now
-			create l_rand.set_seed (l_time.milli_second)
-			create l_math
-			pi_2 := 2.0 * 3.14159265358979323846
-			
-			from i := 1 until i > l_count loop
-				l_rand.forth
-				u1 := l_rand.double_item
-				if u1 = 0.0 then u1 := 0.000001 end -- Avoid log(0)
-				l_rand.forth
-				u2 := l_rand.double_item
-				
-				z0 := l_math.sqrt (-2.0 * l_math.log (u1)) * l_math.cosine (pi_2 * u2)
-				l_store.put_real_64 (z0, i)
-				i := i + 1
-				
-				if i <= l_count then
-					z1 := l_math.sqrt (-2.0 * l_math.log (u1)) * l_math.sine (pi_2 * u2)
-					l_store.put_real_64 (z1, i)
-					i := i + 1
-				end
-			end
-			storage := l_store
+			make_randn_with_dtype (a_shape, (create {ET_DTYPE_REGISTRY}).default_float_dtype)
 		ensure
 			shape_set: shape.count = a_shape.count
 		end
 
 	make_zeros_with_dtype (a_shape: ARRAY [INTEGER_32]; a_dtype: ET_DTYPE)
 			-- Create a new ZERO-initialized tensor of specific dtype.
-			-- `a_dtype` is guaranteed valid by `ET_DTYPE` invariant,
-			-- so no exception branch is needed.
 		require
 			shape_lower_one: a_shape.lower = 1
+			valid_dtype: a_dtype /= Void
 		local
 			l_count: INTEGER_32
 			l_strides: ARRAY [INTEGER_32]
-			l_store_float64: ET_STORAGE_REAL_64
-			l_store_float32: ET_STORAGE_REAL_32
-			l_store_int64: ET_STORAGE_INT_64
-			l_store_int32: ET_STORAGE_INT_32
-			l_store_bool: ET_STORAGE_BOOL
+			l_factory: ET_STORAGE_FACTORY
 		do
 			shape := a_shape.deep_twin
 			l_strides := calculate_contiguous_strides (a_shape)
 			strides := l_strides
 			offset := 0
 			l_count := calculate_product (a_shape)
-
-			if a_dtype.is_float64 then
-				create l_store_float64.make (l_count)
-				storage := l_store_float64
-			elseif a_dtype.is_float32 then
-				create l_store_float32.make (l_count)
-				storage := l_store_float32
-			elseif a_dtype.is_int64 then
-				create l_store_int64.make (l_count)
-				storage := l_store_int64
-			elseif a_dtype.is_int32 then
-				create l_store_int32.make (l_count)
-				storage := l_store_int32
-			else
-				-- By elimination: a_dtype.is_bool
-				create l_store_bool.make (l_count)
-				storage := l_store_bool
-			end
-
+			create l_factory
+			storage := l_factory.make_zeros (l_count, a_dtype)
 			create device.make_cpu
 			dtype := a_dtype
 		ensure
@@ -190,64 +110,45 @@ feature {NONE} -- Initialization
 
 	make_ones_with_dtype (a_shape: ARRAY [INTEGER_32]; a_dtype: ET_DTYPE)
 			-- Create a new ONE-initialized tensor of specific dtype.
-			-- `a_dtype` is guaranteed valid by `ET_DTYPE` invariant,
-			-- so no exception branch is needed.
 		require
 			shape_lower_one: a_shape.lower = 1
+			valid_dtype: a_dtype /= Void
 		local
 			l_count: INTEGER_32
 			l_strides: ARRAY [INTEGER_32]
-			i: INTEGER_32
-			l_store_float64: ET_STORAGE_REAL_64
-			l_store_float32: ET_STORAGE_REAL_32
-			l_store_int64: ET_STORAGE_INT_64
-			l_store_int32: ET_STORAGE_INT_32
-			l_store_bool: ET_STORAGE_BOOL
+			l_factory: ET_STORAGE_FACTORY
 		do
 			shape := a_shape.deep_twin
 			l_strides := calculate_contiguous_strides (a_shape)
 			strides := l_strides
 			offset := 0
 			l_count := calculate_product (a_shape)
+			create l_factory
+			storage := l_factory.make_ones (l_count, a_dtype)
+			create device.make_cpu
+			dtype := a_dtype
+		ensure
+			shape_set: shape.count = a_shape.count
+		end
 
-			if a_dtype.is_float64 then
-				create l_store_float64.make (l_count)
-				from i := 1 until i > l_count loop
-					l_store_float64.put_real_64 (1.0, i)
-					i := i + 1
-				end
-				storage := l_store_float64
-			elseif a_dtype.is_float32 then
-				create l_store_float32.make (l_count)
-				from i := 1 until i > l_count loop
-					l_store_float32.put_real_32 (1.0, i)
-					i := i + 1
-				end
-				storage := l_store_float32
-			elseif a_dtype.is_int64 then
-				create l_store_int64.make (l_count)
-				from i := 1 until i > l_count loop
-					l_store_int64.put_int_64 ({INTEGER_64} 1, i)
-					i := i + 1
-				end
-				storage := l_store_int64
-			elseif a_dtype.is_int32 then
-				create l_store_int32.make (l_count)
-				from i := 1 until i > l_count loop
-					l_store_int32.put_int_32 (1, i)
-					i := i + 1
-				end
-				storage := l_store_int32
-			else
-				-- By elimination: a_dtype.is_bool
-				create l_store_bool.make (l_count)
-				from i := 1 until i > l_count loop
-					l_store_bool.put_boolean (True, i)
-					i := i + 1
-				end
-				storage := l_store_bool
-			end
-
+	make_randn_with_dtype (a_shape: ARRAY [INTEGER_32]; a_dtype: ET_DTYPE)
+			-- Create a new random normal-distributed tensor of specific dtype.
+		require
+			shape_lower_one: a_shape.lower = 1
+			valid_dtype: a_dtype /= Void
+			valid_floating_type: a_dtype.is_floating
+		local
+			l_count: INTEGER_32
+			l_strides: ARRAY [INTEGER_32]
+			l_factory: ET_STORAGE_FACTORY
+		do
+			shape := a_shape.deep_twin
+			l_strides := calculate_contiguous_strides (a_shape)
+			strides := l_strides
+			offset := 0
+			l_count := calculate_product (a_shape)
+			create l_factory
+			storage := l_factory.make_randn (l_count, a_dtype)
 			create device.make_cpu
 			dtype := a_dtype
 		ensure
@@ -270,8 +171,10 @@ feature -- Element Access
 			end
 			if attached {ET_STORAGE_REAL_64} storage as target_store then
 				target_store.put_real_64 (v, offset + flat_idx + 1)
+			elseif attached {ET_STORAGE_REAL_32} storage as target_store then
+				target_store.put_real_32 (v.truncated_to_real, offset + flat_idx + 1)
 			else
-				(create {EXCEPTIONS}).raise ("Storage is not REAL_64")
+				(create {EXCEPTIONS}).raise ("Storage is not REAL_64 or REAL_32")
 			end
 		end
 
@@ -289,8 +192,10 @@ feature -- Element Access
 			end
 			if attached {ET_STORAGE_REAL_64} storage as target_store then
 				Result := target_store.item_as_real_64 (offset + flat_idx + 1)
+			elseif attached {ET_STORAGE_REAL_32} storage as target_store then
+				Result := target_store.item_as_real_32 (offset + flat_idx + 1)
 			else
-				(create {EXCEPTIONS}).raise ("Storage is not REAL_64")
+				(create {EXCEPTIONS}).raise ("Storage is not REAL_64 or REAL_32")
 			end
 		end
 
@@ -400,21 +305,8 @@ feature -- Autograd Props
 
 	make_ones_with_dtype_like: ET_TENSOR
 			-- Creates a tensor of ones matching shape and dtype of Current
-		local
-			l_res: ET_TENSOR
 		do
-			if dtype.is_float64 then
-				create l_res.make_ones_with_dtype (shape, create {ET_DTYPE}.make_float64)
-			elseif dtype.is_float32 then
-				create l_res.make_ones_with_dtype (shape, create {ET_DTYPE}.make_float32)
-			elseif dtype.is_int64 then
-				create l_res.make_ones_with_dtype (shape, create {ET_DTYPE}.make_int64)
-			elseif dtype.is_int32 then
-				create l_res.make_ones_with_dtype (shape, create {ET_DTYPE}.make_int32)
-			else
-				create l_res.make_ones_with_dtype (shape, create {ET_DTYPE}.make_bool)
-			end
-			Result := l_res
+			create Result.make_ones_with_dtype (shape, dtype)
 		end
 
 feature -- Math Operations (with strict Contracts)
@@ -423,7 +315,7 @@ feature -- Math Operations (with strict Contracts)
 			-- Element-wise subtraction.
 		require
 			same_shape: is_broadcastable (other.shape)
-			same_dtype: dtype ~ other.dtype
+
 		local
 			v1, v2: ET_VALUE
 			res_v: ET_VALUE
@@ -450,7 +342,7 @@ feature -- Math Operations (with strict Contracts)
 			-- Element-wise addition.
 		require
 			same_shape: is_broadcastable (other.shape)
-			same_dtype: dtype ~ other.dtype
+
 		local
 			v1, v2: ET_VALUE
 			res_v: ET_VALUE
@@ -527,7 +419,7 @@ feature -- Math Operations (with strict Contracts)
 		require
 			not_requires_grad: not requires_grad
 			same_shape: is_broadcastable (other.shape)
-			same_dtype: dtype ~ other.dtype
+
 		local
 			br_shape: ARRAY [INTEGER_32]
 			l_count, i, idx_self, idx_other: INTEGER_32
@@ -611,7 +503,7 @@ feature -- Math Operations (with strict Contracts)
 			end
 			
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
-			Result.dtype.copy(dtype)
+			Result.set_dtype (dtype)
 		end
 
 	plus_scalar_in_place (val: REAL_64)
@@ -650,7 +542,7 @@ feature -- Math Operations (with strict Contracts)
 			-- Dispatches to BLAS fast paths for float types, generic fallback for others.
 		require
 			valid_operands: rank >= 1 and other.rank >= 1
-			same_dtype: dtype ~ other.dtype
+
 		local
 			v1, v2: ET_VALUE
 			res_v: ET_VALUE
@@ -1137,7 +1029,7 @@ feature -- Math Operations (continued)
 			-- Element-wise multiplication.
 		require
 			same_shape: is_broadcastable (other.shape)
-			same_dtype: dtype ~ other.dtype
+
 		local
 			v1, v2: ET_VALUE
 			res_v: ET_VALUE
@@ -1245,7 +1137,7 @@ feature -- Math Operations (continued)
 		require
 			not_requires_grad: not requires_grad
 			same_shape: is_broadcastable (other.shape)
-			same_dtype: dtype ~ other.dtype
+
 		local
 			br_shape: ARRAY [INTEGER_32]
 			l_count, i, idx_self, idx_other: INTEGER_32
@@ -1329,7 +1221,7 @@ feature -- Math Operations (continued)
 			end
 			
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
-			Result.dtype.copy(dtype)
+			Result.set_dtype (dtype)
 		end
 
 	mul_scalar_in_place (val: REAL_64)
@@ -1367,7 +1259,7 @@ feature -- Math Operations (continued)
 			-- Element-wise division.
 		require
 			same_shape: is_broadcastable (other.shape)
-			same_dtype: dtype ~ other.dtype
+
 		local
 			l_strides, br_shape: ARRAY [INTEGER_32]
 			l_store: ET_STORAGE
@@ -1414,7 +1306,7 @@ feature -- Math Operations (continued)
 			end
 			
 			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
-			Result.dtype.copy(dtype)
+			Result.set_dtype (dtype)
 		ensure
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
 		end
@@ -1424,7 +1316,7 @@ feature -- Math Operations (continued)
 		require
 			not_requires_grad: not requires_grad
 			same_shape: is_broadcastable (other.shape)
-			same_dtype: dtype ~ other.dtype
+
 		local
 			br_shape: ARRAY [INTEGER_32]
 			l_count, i, idx_self, idx_other: INTEGER_32
@@ -1500,7 +1392,7 @@ feature -- Math Operations (continued)
 			end
 			
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
-			Result.dtype.copy(dtype)
+			Result.set_dtype (dtype)
 		end
 
 	div_scalar_in_place (val: REAL_64)
@@ -1925,7 +1817,7 @@ feature -- Reductions
 			
 			l_res_strides := calculate_contiguous_strides (l_final_shape)
 			create Result.make_from_storage (l_res_store, l_final_shape, l_res_strides, 0)
-			Result.dtype.copy(dtype)
+			Result.set_dtype (dtype)
 		ensure
 			valid_result: Result /= Void
 		end
@@ -2004,7 +1896,7 @@ feature -- Reductions
 			
 			l_res_strides := calculate_contiguous_strides (l_final_shape)
 			create Result.make_from_storage (l_store, l_final_shape, l_res_strides, 0)
-			Result.dtype.copy (dtype)
+			Result.set_dtype (dtype)
 		end
 
 	max_dim (dim: INTEGER_32; keep_dim: BOOLEAN): ET_TENSOR
@@ -2092,7 +1984,7 @@ feature -- Reductions
 			
 			l_res_strides := calculate_contiguous_strides (l_final_shape)
 			create Result.make_from_storage (l_res_store, l_final_shape, l_res_strides, 0)
-			Result.dtype.copy(dtype)
+			Result.set_dtype (dtype)
 		end
 
 	softmax (dim: INTEGER_32): ET_TENSOR
@@ -2494,7 +2386,7 @@ feature -- Helpers
 			-- `Current` and `other` must have perfectly matching shapes.
 		require
 			same_shape: shape ~ other.shape
-			same_dtype: dtype ~ other.dtype
+
 		local
 			l_count, i, idx_self, idx_other: INTEGER_32
 		do
@@ -2616,7 +2508,58 @@ feature -- Utilities
 			end
 		end
 
+
+	to_dtype (a_dtype: ET_DTYPE): ET_TENSOR
+			-- Convert tensor to new dtype. Returns Current if already of `a_dtype`.
+		require
+			valid_dtype: a_dtype /= Void
+		local
+			l_count, i, idx: INTEGER_32
+			l_res: ET_TENSOR
+			val_real64: REAL_64
+		do
+			if dtype.is_equal (a_dtype) then
+				Result := Current
+			else
+				create l_res.make_zeros_with_dtype (shape, a_dtype)
+				l_count := calculate_product (shape)
+				from i := 1 until i > l_count loop
+					idx := linear_index_to_offset (i, shape, strides, shape)
+					
+					-- Extract as REAL_64
+					if dtype.is_float64 then
+						if attached {ET_STORAGE_REAL_64} storage as s then val_real64 := s.item_as_real_64 (offset + idx + 1) end
+					elseif dtype.is_float32 then
+						if attached {ET_STORAGE_REAL_32} storage as s then val_real64 := s.item_as_real_32 (offset + idx + 1) end
+					elseif dtype.is_int32 then
+						if attached {ET_STORAGE_INT_32} storage as s then val_real64 := s.item_as_int_32 (offset + idx + 1) end
+					elseif dtype.is_bool then
+						if attached {ET_STORAGE_BOOL} storage as s then 
+							if s.item_as_boolean (offset + idx + 1) then val_real64 := 1.0 else val_real64 := 0.0 end
+						end
+					end
+					
+					-- Store casted value directly in target tensor
+					if attached {ET_STORAGE_REAL_64} l_res.storage as ts then
+						ts.put_real_64 (val_real64, idx + 1)
+					elseif attached {ET_STORAGE_REAL_32} l_res.storage as ts then
+						ts.put_real_32 (val_real64.truncated_to_real, idx + 1)
+					elseif attached {ET_STORAGE_INT_32} l_res.storage as ts then
+						ts.put_int_32 (val_real64.truncated_to_integer, idx + 1)
+					elseif attached {ET_STORAGE_BOOL} l_res.storage as ts then
+						ts.put_boolean (val_real64 /= 0.0, idx + 1)
+					end
+					
+					i := i + 1
+				end
+				Result := l_res
+			end
+		ensure
+			result_valid: Result /= Void
+		end
+
 feature -- Output
+
 
 	out: STRING
 		do

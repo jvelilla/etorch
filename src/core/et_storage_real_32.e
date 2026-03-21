@@ -53,7 +53,7 @@ feature -- Access
 	item_as_real_64 (index: INTEGER_32): REAL_64
 			-- Read an element as REAL_64.
 		do
-			(create {EXCEPTIONS}).raise ("Type mismatch: storage is REAL_32")
+			Result := data.item (index).to_double
 		end
 
 	item_as_int_64 (index: INTEGER_32): INTEGER_64
@@ -83,7 +83,7 @@ feature -- Access
 	put_real_64 (v: REAL_64; index: INTEGER_32)
 			-- Write an element as REAL_64.
 		do
-			(create {EXCEPTIONS}).raise ("Type mismatch: storage is REAL_32")
+			data.put (v.truncated_to_real, index)
 		end
 
 	put_int_32 (v: INTEGER_32; index: INTEGER_32)
