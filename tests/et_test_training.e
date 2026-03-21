@@ -79,9 +79,9 @@ feature -- Tests
 			t := 3
 			c_ := 4
 			
-			create q.make_ones (<<b, t, c_>>)
-			create k.make_ones (<<b, t, c_>>)
-			create v.make_ones (<<b, t, c_>>)
+			create q.make_ones_with_dtype (<<b, t, c_>>, create {ET_DTYPE_FLOAT64})
+			create k.make_ones_with_dtype (<<b, t, c_>>, create {ET_DTYPE_FLOAT64})
+			create v.make_ones_with_dtype (<<b, t, c_>>, create {ET_DTYPE_FLOAT64})
 			
 			q.set_requires_grad (True)
 			k.set_requires_grad (True)
@@ -90,11 +90,11 @@ feature -- Tests
 			att := q.matmul (k.transpose (2, 3))
 			
 			create scalar_shape.make_empty
-			create t_scale.make_ones (scalar_shape)
+			create t_scale.make_ones_with_dtype (scalar_shape, create {ET_DTYPE_FLOAT64})
 			t_scale := t_scale.mul_scalar (1.0 / c_.to_double.power (0.5))
 			att := att.mul (t_scale)
 			
-			create causal_mask.make_zeros (<<t, t>>)
+			create causal_mask.make_zeros_with_dtype (<<t, t>>, create {ET_DTYPE_FLOAT64})
 			
 			from t1 := 1 until t1 > t loop
 				from t2 := t1 + 1 until t2 > t loop

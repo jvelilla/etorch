@@ -180,7 +180,7 @@ feature -- DType Tests
 			t: ET_TENSOR
 			l_dtype: ET_DTYPE
 		do
-			create l_dtype.make_float32
+			create {ET_DTYPE_FLOAT32} l_dtype
 			create t.make_zeros_with_dtype (<<3>>, l_dtype)
 			assert ("numel is 3", t.numel = 3)
 			assert ("dtype is float32", t.dtype.is_float32)
@@ -193,7 +193,7 @@ feature -- DType Tests
 			t: ET_TENSOR
 			l_dtype: ET_DTYPE
 		do
-			create l_dtype.make_int32
+			create {ET_DTYPE_INT32} l_dtype
 			create t.make_zeros_with_dtype (<<4>>, l_dtype)
 			assert ("numel is 4", t.numel = 4)
 			assert ("dtype is int32", t.dtype.is_int32)
@@ -206,7 +206,7 @@ feature -- DType Tests
 			t: ET_TENSOR
 			l_dtype: ET_DTYPE
 		do
-			create l_dtype.make_bool
+			create {ET_DTYPE_BOOL} l_dtype
 			create t.make_zeros_with_dtype (<<2>>, l_dtype)
 			assert ("numel is 2", t.numel = 2)
 			assert ("dtype is bool", t.dtype.is_bool)
@@ -234,8 +234,8 @@ feature -- DType Tests
 			create a.make_from_storage (l_store_a, <<3>>, <<1>>, 0)
 			create b.make_from_storage (l_store_b, <<3>>, <<1>>, 0)
 			-- Make both float32
-			a.set_dtype (create {ET_DTYPE}.make_float32)
-			b.set_dtype (create {ET_DTYPE}.make_float32)
+			a.set_dtype (create {ET_DTYPE_FLOAT32})
+			b.set_dtype (create {ET_DTYPE_FLOAT32})
 
 			c := a + b
 
@@ -266,8 +266,8 @@ feature -- DType Tests
 
 			create a.make_from_storage (l_store_a, <<3>>, <<1>>, 0)
 			create b.make_from_storage (l_store_b, <<3>>, <<1>>, 0)
-			a.set_dtype (create {ET_DTYPE}.make_int32)
-			b.set_dtype (create {ET_DTYPE}.make_int32)
+			a.set_dtype (create {ET_DTYPE_INT32})
+			b.set_dtype (create {ET_DTYPE_INT32})
 
 			c := a + b
 
@@ -298,8 +298,8 @@ feature -- DType Tests
 
 			create a.make_from_storage (l_store_a, <<3>>, <<1>>, 0)
 			create b.make_from_storage (l_store_b, <<3>>, <<1>>, 0)
-			a.set_dtype (create {ET_DTYPE}.make_bool)
-			b.set_dtype (create {ET_DTYPE}.make_bool)
+			a.set_dtype (create {ET_DTYPE_BOOL})
+			b.set_dtype (create {ET_DTYPE_BOOL})
 
 			c := a * b
 
@@ -325,7 +325,7 @@ feature -- DType Tests
 			l_store.put_int_32 (3, 3)
 			l_store.put_int_32 (4, 4)
 			create t.make_from_storage (l_store, <<2, 2>>, <<2, 1>>, 0)
-			t.set_dtype (create {ET_DTYPE}.make_int32)
+			t.set_dtype (create {ET_DTYPE_INT32})
 
 			s := t.sum (<<2>>, False)
 
@@ -364,8 +364,8 @@ feature -- DType Tests
 			l_strides := <<2, 1>>
 			create a.make_from_storage (a_store, <<2, 2>>, l_strides, 0)
 			create b.make_from_storage (b_store, <<2, 2>>, l_strides, 0)
-			a.set_dtype (create {ET_DTYPE}.make_float32)
-			b.set_dtype (create {ET_DTYPE}.make_float32)
+			a.set_dtype (create {ET_DTYPE_FLOAT32})
+			b.set_dtype (create {ET_DTYPE_FLOAT32})
 
 			c := a.matmul (b)
 			assert ("F32 MATMUL Result shape", c.shape [1] = 2 and c.shape [2] = 2)
@@ -402,8 +402,8 @@ feature -- DType Tests
 			l_strides := <<2, 1>>
 			create a.make_from_storage (a_store, <<2, 2>>, l_strides, 0)
 			create b.make_from_storage (b_store, <<2, 2>>, l_strides, 0)
-			a.set_dtype (create {ET_DTYPE}.make_int32)
-			b.set_dtype (create {ET_DTYPE}.make_int32)
+			a.set_dtype (create {ET_DTYPE_INT32})
+			b.set_dtype (create {ET_DTYPE_INT32})
 
 			c := a.matmul (b)
 			assert ("I32 MATMUL Result shape", c.shape [1] = 2 and c.shape [2] = 2)

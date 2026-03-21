@@ -19,7 +19,7 @@ feature -- Tests
 		do
 			tol := 1.0e-5
 			
-			create p.make_zeros (<<2>>)
+			create p.make_zeros_with_dtype (<<2>>, create {ET_DTYPE_FLOAT64})
 			if attached {ET_STORAGE_REAL_64} p.storage as ps then
 				ps.put_real_64 (5.5, 1)
 				ps.put_real_64 (7.7, 2)
