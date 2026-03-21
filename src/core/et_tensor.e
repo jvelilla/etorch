@@ -17,6 +17,7 @@ create
 	make_from_storage,
 	make_zeros,
 	make_ones,
+	make_randn,
 	make_zeros_with_dtype,
 	make_ones_with_dtype
 
@@ -86,6 +87,58 @@ feature {NONE} -- Initialization
 			storage := l_store
 			create device.make_cpu
 			create dtype.make_float64
+		ensure
+			shape_set: shape.count = a_shape.count
+		end
+
+	make_randn (a_shape: ARRAY [INTEGER_32])
+			-- Create a new normal-distributed random tensor of default float64.
+			-- Uses Box-Muller transform for standard normal distribution N(0, 1).
+		require
+			shape_lower_one: a_shape.lower = 1
+		local
+			l_count: INTEGER_32
+			l_store: ET_STORAGE_REAL_64
+			l_strides: ARRAY [INTEGER_32]
+			i: INTEGER_32
+			l_rand: RANDOM
+			l_time: TIME
+			u1, u2, z0, z1: REAL_64
+			l_math: DOUBLE_MATH
+			pi_2: REAL_64
+		do
+			shape := a_shape.deep_twin
+			l_strides := calculate_contiguous_strides (a_shape)
+			strides := l_strides
+			offset := 0
+			l_count := calculate_product (a_shape)
+			create l_store.make (l_count)
+			create device.make_cpu
+			create dtype.make_float64
+			
+			create l_time.make_now
+			create l_rand.set_seed (l_time.milli_second)
+			create l_math
+			pi_2 := 2.0 * 3.14159265358979323846
+			
+			from i := 1 until i > l_count loop
+				l_rand.forth
+				u1 := l_rand.double_item
+				if u1 = 0.0 then u1 := 0.000001 end -- Avoid log(0)
+				l_rand.forth
+				u2 := l_rand.double_item
+				
+				z0 := l_math.sqrt (-2.0 * l_math.log (u1)) * l_math.cosine (pi_2 * u2)
+				l_store.put_real_64 (z0, i)
+				i := i + 1
+				
+				if i <= l_count then
+					z1 := l_math.sqrt (-2.0 * l_math.log (u1)) * l_math.sine (pi_2 * u2)
+					l_store.put_real_64 (z1, i)
+					i := i + 1
+				end
+			end
+			storage := l_store
 		ensure
 			shape_set: shape.count = a_shape.count
 		end
@@ -201,6 +254,46 @@ feature {NONE} -- Initialization
 			shape_set: shape.count = a_shape.count
 		end
 
+feature -- Element Access
+
+	put_real_64 (v: REAL_64; a_indices: ARRAY [INTEGER_32])
+			-- Set the element at N-D index `a_indices` to `v`.
+		require
+			valid_indices: a_indices.count = shape.count
+		local
+			i, flat_idx: INTEGER_32
+		do
+			flat_idx := 0
+			from i := a_indices.upper until i < a_indices.lower loop
+				flat_idx := flat_idx + (a_indices [i] - 1) * strides [i]
+				i := i - 1
+			end
+			if attached {ET_STORAGE_REAL_64} storage as target_store then
+				target_store.put_real_64 (v, offset + flat_idx + 1)
+			else
+				(create {EXCEPTIONS}).raise ("Storage is not REAL_64")
+			end
+		end
+
+	item_as_real_64 (a_indices: ARRAY [INTEGER_32]): REAL_64
+			-- Get the element at N-D index `a_indices`.
+		require
+			valid_indices: a_indices.count = shape.count
+		local
+			i, flat_idx: INTEGER_32
+		do
+			flat_idx := 0
+			from i := a_indices.upper until i < a_indices.lower loop
+				flat_idx := flat_idx + (a_indices [i] - 1) * strides [i]
+				i := i - 1
+			end
+			if attached {ET_STORAGE_REAL_64} storage as target_store then
+				Result := target_store.item_as_real_64 (offset + flat_idx + 1)
+			else
+				(create {EXCEPTIONS}).raise ("Storage is not REAL_64")
+			end
+		end
+
 feature -- Properties
 
 	shape: ARRAY [INTEGER_32]
@@ -229,6 +322,29 @@ feature -- Properties
 		do
 			Result := shape.count
 		end
+
+	grad_node: detachable ET_VALUE
+			-- Autograd graph node.
+			
+	set_grad_node (a_node: ET_VALUE)
+			-- Link this tensor to a graph node.
+		do
+			grad_node := a_node
+		end
+		
+	ensure_grad_node: ET_VALUE
+			-- Return existing grad_node or create a new leaf node.
+		do
+			if attached grad_node as n then
+				Result := n
+			else
+				create Result.make (Current)
+				grad_node := Result
+			end
+		ensure
+			node_exists: grad_node /= Void
+			result_consistent: Result = grad_node
+		end
 		
 	numel: INTEGER_32
 			-- Total number of elements physically representing this shape.
@@ -241,7 +357,7 @@ feature -- Autograd Props
 	grad: detachable ET_TENSOR
 			-- Gradient of this tensor.
 			
-	set_grad (a_grad: ET_TENSOR)
+	set_grad (a_grad: detachable ET_TENSOR)
 			-- Manually set the gradient (used dynamically or for tests).
 		do
 			grad := a_grad
@@ -263,11 +379,42 @@ feature -- Autograd Props
 			-- Trigger backpropagation.
 		require
 			requires_grad: requires_grad
-		local
-			l_val: ET_VALUE
 		do
-			create l_val.make (Current)
-			l_val.backward
+			if attached grad_node as node then
+				if not attached grad then
+					-- Root gradient is 1.0 of the same shape/dtype
+					set_grad (Current.make_ones_with_dtype_like)
+				end
+				if attached grad as g then
+					node.set_grad (g)
+				end
+				node.backward
+			else
+				-- If no node, but requires_grad is true, it's a leaf we just track.
+				-- Backward from a leaf with no operations is a no-op or just sets its own grad to 1.
+				if not attached grad then
+					set_grad (Current.make_ones_with_dtype_like)
+				end
+			end
+		end
+
+	make_ones_with_dtype_like: ET_TENSOR
+			-- Creates a tensor of ones matching shape and dtype of Current
+		local
+			l_res: ET_TENSOR
+		do
+			if dtype.is_float64 then
+				create l_res.make_ones_with_dtype (shape, create {ET_DTYPE}.make_float64)
+			elseif dtype.is_float32 then
+				create l_res.make_ones_with_dtype (shape, create {ET_DTYPE}.make_float32)
+			elseif dtype.is_int64 then
+				create l_res.make_ones_with_dtype (shape, create {ET_DTYPE}.make_int64)
+			elseif dtype.is_int32 then
+				create l_res.make_ones_with_dtype (shape, create {ET_DTYPE}.make_int32)
+			else
+				create l_res.make_ones_with_dtype (shape, create {ET_DTYPE}.make_bool)
+			end
+			Result := l_res
 		end
 
 feature -- Math Operations (with strict Contracts)
@@ -277,18 +424,26 @@ feature -- Math Operations (with strict Contracts)
 		require
 			same_shape: is_broadcastable (other.shape)
 			same_dtype: dtype ~ other.dtype
+		local
+			v1, v2: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_ADD_FUNCTION
+			minus_other: ET_TENSOR
 		do
-			Result := Current + other.mul_scalar (-1.0)
+			if requires_grad or other.requires_grad then
+				minus_other := other.mul_scalar (-1.0)
+				v1 := ensure_grad_node
+				v2 := minus_other.ensure_grad_node
+				create l_func
+				res_v := l_func.forward (<<v1, v2>>)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := plus_internal (other.mul_scalar (-1.0))
+			end
 		ensure
 			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
-		end
-
-	minus_scalar (val: REAL_64): ET_TENSOR
-			-- Element-wise subtraction with a scalar.
-		do
-			Result := plus_scalar (-val)
-		ensure
-			result_shape_correct: Result.shape ~ shape
 		end
 
 	plus alias "+" (other: ET_TENSOR): ET_TENSOR
@@ -297,12 +452,33 @@ feature -- Math Operations (with strict Contracts)
 			same_shape: is_broadcastable (other.shape)
 			same_dtype: dtype ~ other.dtype
 		local
+			v1, v2: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_ADD_FUNCTION
+		do
+			if requires_grad or other.requires_grad then
+				v1 := ensure_grad_node
+				v2 := other.ensure_grad_node
+				create l_func
+				res_v := l_func.forward (<<v1, v2>>)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := plus_internal (other)
+			end
+		ensure
+			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
+		end
+
+	plus_internal (other: ET_TENSOR): ET_TENSOR
+			-- Numeric implementation of addition.
+		local
 			l_strides, br_shape: ARRAY [INTEGER_32]
 			l_store: ET_STORAGE
 			l_store_f64: ET_STORAGE_REAL_64
 			l_store_f32: ET_STORAGE_REAL_32
 			l_store_i32: ET_STORAGE_INT_32
-			l_store_bool: ET_STORAGE_BOOL
 			l_count, i, idx_self, idx_other: INTEGER_32
 		do
 			br_shape := broadcast_shape (shape, other.shape)
@@ -336,15 +512,6 @@ feature -- Math Operations (with strict Contracts)
 					l_store_i32.put_int_32 (storage.item_as_int_32 (offset + idx_self + 1) + other.storage.item_as_int_32 (other.offset + idx_other + 1), i)
 					i := i + 1
 				end
-			elseif dtype.is_bool then
-				create l_store_bool.make (l_count)
-				l_store := l_store_bool
-				from i := 1 until i > l_count loop
-					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
-					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
-					l_store_bool.put_boolean (storage.item_as_boolean (offset + idx_self + 1) or other.storage.item_as_boolean (other.offset + idx_other + 1), i)
-					i := i + 1
-				end
 			else
 				(create {EXCEPTIONS}).raise ("Unsupported dtype for addition")
 				create l_store_f64.make (0)
@@ -352,9 +519,7 @@ feature -- Math Operations (with strict Contracts)
 			end
 			
 			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
-			Result.dtype.copy(dtype)
-		ensure
-			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
+			Result.set_dtype (dtype)
 		end
 
 	plus_in_place (other: ET_TENSOR)
@@ -486,16 +651,56 @@ feature -- Math Operations (with strict Contracts)
 		require
 			valid_operands: rank >= 1 and other.rank >= 1
 			same_dtype: dtype ~ other.dtype
+		local
+			v1, v2: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_MATMUL_FUNCTION
 		do
-			if dtype.is_float64 then
-				Result := matmul_blas_f64 (other)
-			elseif dtype.is_float32 then
-				Result := matmul_blas_f32 (other)
+			if requires_grad or other.requires_grad then
+				v1 := ensure_grad_node
+				v2 := other.ensure_grad_node
+				create l_func
+				res_v := l_func.forward (<<v1, v2>>)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
 			else
-				-- Generic fallback for int64, int32, bool (no BLAS equivalent)
-				Result := matmul_generic (other)
+				Result := matmul_internal (other)
 			end
-			Result.set_dtype (dtype)
+		end
+
+	matmul_internal (other: ET_TENSOR): ET_TENSOR
+			-- Numeric implementation of matmul.
+		local
+			l_res: ET_TENSOR
+			l_new_shape: ARRAY [INTEGER_32]
+			i: INTEGER_32
+		do
+			if rank = 1 and other.rank >= 2 then
+				create l_new_shape.make_filled (1, 1, 2)
+				l_new_shape[1] := 1
+				l_new_shape[2] := shape[1]
+				l_res := reshape (l_new_shape).matmul_internal (other)
+				
+				create l_new_shape.make_empty
+				from i := 1 until i > l_res.rank loop
+					if i /= l_res.rank - 1 then
+						l_new_shape.force (l_res.shape[i], l_new_shape.count + 1)
+					end
+					i := i + 1
+				end
+				Result := l_res.reshape (l_new_shape)
+			else
+				if dtype.is_float64 then
+					Result := matmul_blas_f64 (other)
+				elseif dtype.is_float32 then
+					Result := matmul_blas_f32 (other)
+				else
+					-- Generic fallback for int64, int32, bool (no BLAS equivalent)
+					Result := matmul_generic (other)
+				end
+				Result.set_dtype (dtype)
+			end
 		end
 
 feature {NONE} -- Matmul Helpers (BLAS fast paths + generic fallback)
@@ -934,12 +1139,32 @@ feature -- Math Operations (continued)
 			same_shape: is_broadcastable (other.shape)
 			same_dtype: dtype ~ other.dtype
 		local
+			v1, v2: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_MUL_FUNCTION
+		do
+			if requires_grad or other.requires_grad then
+				v1 := ensure_grad_node
+				v2 := other.ensure_grad_node
+				create l_func
+				res_v := l_func.forward (<<v1, v2>>)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := mul_internal (other)
+			end
+		ensure
+			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
+		end
+
+	mul_internal (other: ET_TENSOR): ET_TENSOR
+			-- Numeric implementation of multiplication.
+		local
 			l_strides, br_shape: ARRAY [INTEGER_32]
 			l_store: ET_STORAGE
 			l_store_f64: ET_STORAGE_REAL_64
 			l_store_f32: ET_STORAGE_REAL_32
-			l_store_i32: ET_STORAGE_INT_32
-			l_store_bool: ET_STORAGE_BOOL
 			l_count, i, idx_self, idx_other: INTEGER_32
 		do
 			br_shape := broadcast_shape (shape, other.shape)
@@ -965,33 +1190,54 @@ feature -- Math Operations (continued)
 					i := i + 1
 				end
 			elseif dtype.is_int32 then
-				create l_store_i32.make (l_count)
-				l_store := l_store_i32
+				create {ET_STORAGE_INT_32} l_store.make (l_count)
 				from i := 1 until i > l_count loop
 					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
 					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
-					l_store_i32.put_int_32 (storage.item_as_int_32 (offset + idx_self + 1) * other.storage.item_as_int_32 (other.offset + idx_other + 1), i)
+					if attached {ET_STORAGE_INT_32} l_store as s then
+						s.put_int_32 (storage.item_as_int_32 (offset + idx_self + 1) * other.storage.item_as_int_32 (other.offset + idx_other + 1), i)
+					end
 					i := i + 1
+				end
+			elseif dtype.is_int64 then
+				if attached {ET_STORAGE_INT_64} storage as target_store and then
+				   attached {ET_STORAGE_INT_64} other.storage as src_store then
+					create {ET_STORAGE_INT_64} l_store.make (l_count)
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						if attached {ET_STORAGE_INT_64} l_store as s then
+							s.put_int_64 (target_store.item_as_int_64 (offset + idx_self + 1) * src_store.item_as_int_64 (other.offset + idx_other + 1), i)
+						end
+						i := i + 1
+					end
+				else
+					(create {EXCEPTIONS}).raise ("Storage mismatch for int64 multiplication")
+					create {ET_STORAGE_REAL_64} l_store.make (0)
 				end
 			elseif dtype.is_bool then
-				create l_store_bool.make (l_count)
-				l_store := l_store_bool
-				from i := 1 until i > l_count loop
-					idx_self := linear_index_to_offset (i, shape, strides, br_shape)
-					idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
-					l_store_bool.put_boolean (storage.item_as_boolean (offset + idx_self + 1) and other.storage.item_as_boolean (other.offset + idx_other + 1), i)
-					i := i + 1
+				if attached {ET_STORAGE_BOOL} storage as target_store and then
+				   attached {ET_STORAGE_BOOL} other.storage as src_store then
+					create {ET_STORAGE_BOOL} l_store.make (l_count)
+					from i := 1 until i > l_count loop
+						idx_self := linear_index_to_offset (i, shape, strides, br_shape)
+						idx_other := linear_index_to_offset (i, other.shape, other.strides, br_shape)
+						if attached {ET_STORAGE_BOOL} l_store as s then
+							s.put_boolean (target_store.item_as_boolean (offset + idx_self + 1) and src_store.item_as_boolean (other.offset + idx_other + 1), i)
+						end
+						i := i + 1
+					end
+				else
+					(create {EXCEPTIONS}).raise ("Storage mismatch for bool multiplication")
+					create {ET_STORAGE_REAL_64} l_store.make (0)
 				end
 			else
-				(create {EXCEPTIONS}).raise ("Unsupported dtype for multiplication")
-				create l_store_f64.make (0)
-				l_store := l_store_f64
+				(create {EXCEPTIONS}).raise ("Unsupported dtype for multiplication: " + dtype.out)
+				create {ET_STORAGE_REAL_64} l_store.make (0)
 			end
 			
 			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
-			Result.dtype.copy(dtype)
-		ensure
-			result_shape_correct: Result.shape ~ broadcast_shape (shape, other.shape)
+			Result.set_dtype (dtype)
 		end
 
 	mul_in_place (other: ET_TENSOR)
@@ -1382,6 +1628,25 @@ feature -- Math Operations (continued)
 	gelu: ET_TENSOR
 			-- Gaussian Error Linear Unit (element-wise).
 		local
+			v1: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_GELU_FUNCTION
+		do
+			if requires_grad then
+				v1 := ensure_grad_node
+				create l_func
+				res_v := l_func.forward (<<v1>>)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := gelu_internal
+			end
+		end
+
+	gelu_internal: ET_TENSOR
+			-- Numeric implementation of GELU.
+		local
 			l_strides: ARRAY [INTEGER_32]
 			l_store: ET_STORAGE_REAL_64
 			l_count, i, idx_self: INTEGER_32
@@ -1404,7 +1669,8 @@ feature -- Math Operations (continued)
 				i := i + 1
 			end
 			
-			create Result.make_from_storage (l_store, shape, l_strides, 0)
+			create Result.make_from_storage (l_store, shape.deep_twin, l_strides, 0)
+			Result.set_dtype (dtype)
 		end
 
 	relu: ET_TENSOR
@@ -1434,6 +1700,38 @@ feature -- Math Operations (continued)
 		end
 
 feature -- Reductions
+
+	sum_to_size (target_shape: ARRAY [INTEGER_32]): ET_TENSOR
+			-- Reduce tensor to match `target_shape` by summing across broadcasted dimensions.
+			-- Useful for autograd backward passes involving broadcasting.
+		require
+			target_shape_valid: target_shape.count <= rank
+		local
+			l_res: ET_TENSOR
+			diff: INTEGER_32
+			i: INTEGER_32
+			d: INTEGER_32
+		do
+			l_res := Current
+			diff := rank - target_shape.count
+			
+			-- 1. Sum away prepended dimensions (e.g., shape (2, 3, 4) -> target (3, 4), sum dim 1)
+			from i := 1 until i > diff loop
+				-- Always sum the first dimension since the rank decreases each time
+				l_res := l_res.sum_dim (1, False)
+				i := i + 1
+			end
+			
+			-- 2. Sum away broadcasted dimensions (e.g., shape (3, 4) -> target (1, 4), sum dim 1 keep_dim=True)
+			from d := 1 until d > target_shape.count loop
+				if l_res.shape [d] > 1 and target_shape [d] = 1 then
+					l_res := l_res.sum_dim (d, True)
+				end
+				d := d + 1
+			end
+			
+			Result := l_res
+		end
 
 	sum (dims: ARRAY [INTEGER_32]; keep_dim: BOOLEAN): ET_TENSOR
 			-- Sum reduction over specific dimensions.
@@ -1529,6 +1827,25 @@ feature -- Reductions
 			-- Sum reduction over a specific dimension.
 		require
 			valid_dim: dim >= 1 and dim <= rank
+		local
+			v1: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_SUM_DIM_FUNCTION
+		do
+			if requires_grad then
+				v1 := ensure_grad_node
+				create l_func
+				res_v := l_func.forward_with_params (<<v1>>, dim, keep_dim)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := sum_dim_internal (dim, keep_dim)
+			end
+		end
+
+	sum_dim_internal (dim: INTEGER_32; keep_dim: BOOLEAN): ET_TENSOR
+			-- Numeric implementation of sum_dim.
 		local
 			l_res_shape, l_final_shape: ARRAY [INTEGER_32]
 			l_res_strides: ARRAY [INTEGER_32]
@@ -1634,7 +1951,7 @@ feature -- Reductions
 			l_mean: ET_TENSOR
 			l_res_shape, l_final_shape: ARRAY [INTEGER_32]
 			l_res_strides: ARRAY [INTEGER_32]
-			l_inner, l_outer, i, k, idx_src, idx_res: INTEGER_32
+			l_inner, i, k, idx_src, idx_res: INTEGER_32
 			l_store: ET_STORAGE_REAL_64
 			mean_val, x_val, sum_sq: REAL_64
 			n_div: REAL_64
@@ -1783,6 +2100,27 @@ feature -- Reductions
 		require
 			valid_dim: dim >= 1 and dim <= rank
 		local
+			v1: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_SOFTMAX_FUNCTION
+		do
+			if requires_grad then
+				v1 := ensure_grad_node
+				create l_func
+				res_v := l_func.forward_with_dim (<<v1>>, dim)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := softmax_internal (dim)
+			end
+		end
+
+	softmax_internal (dim: INTEGER_32): ET_TENSOR
+			-- Numeric implementation of softmax.
+		require
+			valid_dim: dim >= 1 and dim <= rank
+		local
 			l_max, l_sum, l_val: REAL_64
 			i, k, idx_src, idx_dst: INTEGER_32
 			l_res_store: ET_STORAGE_REAL_64
@@ -1829,6 +2167,7 @@ feature -- Reductions
 			end
 			
 			create Result.make_from_storage (l_res_store, shape.deep_twin, l_res_strides, 0)
+			Result.set_dtype (dtype)
 		end
 
 	rms_norm (dim: INTEGER_32; eps: REAL_64): ET_TENSOR
@@ -1881,6 +2220,25 @@ feature -- Reductions
 
 	mean_all: ET_TENSOR
 			-- Global mean of all elements in the tensor. Returns a scalar tensor.
+		local
+			v1: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_MEAN_ALL_FUNCTION
+		do
+			if requires_grad then
+				v1 := ensure_grad_node
+				create l_func
+				res_v := l_func.forward (<<v1>>)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := mean_all_internal
+			end
+		end
+
+	mean_all_internal: ET_TENSOR
+			-- Numeric implementation of mean_all.
 			-- Correctly handles non-contiguous tensors (after transpose/slice) via strides.
 		local
 			l_sum: REAL_64
@@ -1920,7 +2278,6 @@ feature -- Views (Zero-copy or copy-on-non-contiguous)
 			l_store_f64: ET_STORAGE_REAL_64
 			l_store_f32: ET_STORAGE_REAL_32
 			l_store_i32: ET_STORAGE_INT_32
-			l_store_bool: ET_STORAGE_BOOL
 			l_count, i, idx: INTEGER_32
 			l_strides: ARRAY [INTEGER_32]
 		do
@@ -1994,10 +2351,29 @@ feature -- Views (Zero-copy or copy-on-non-contiguous)
 			-- If non-contiguous (e.g. after transpose), makes a compact copy first.
 		require
 			valid_reshape: calculate_product (shape) = calculate_product (a_new_shape)
+		local
+			v1: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_RESHAPE_FUNCTION
 		do
-			Result := contiguous.view (a_new_shape)
+			if requires_grad then
+				v1 := ensure_grad_node
+				create l_func
+				res_v := l_func.forward_with_params (<<v1>>, a_new_shape)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := reshape_internal (a_new_shape)
+			end
 		ensure
 			shape_set: Result.shape ~ a_new_shape
+		end
+
+	reshape_internal (a_new_shape: ARRAY [INTEGER_32]): ET_TENSOR
+			-- Numeric implementation of reshape.
+		do
+			Result := contiguous.view (a_new_shape)
 		end
 
 	transpose (dim1, dim2: INTEGER_32): ET_TENSOR
@@ -2006,6 +2382,25 @@ feature -- Views (Zero-copy or copy-on-non-contiguous)
 		require
 			valid_dim1: dim1 >= 1 and dim1 <= rank
 			valid_dim2: dim2 >= 1 and dim2 <= rank
+		local
+			v1: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_TRANSPOSE_FUNCTION
+		do
+			if requires_grad then
+				v1 := ensure_grad_node
+				create l_func
+				res_v := l_func.forward_with_params (<<v1>>, dim1, dim2)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := transpose_internal (dim1, dim2)
+			end
+		end
+
+	transpose_internal (dim1, dim2: INTEGER_32): ET_TENSOR
+			-- Numeric implementation.
 		local
 			l_shape: ARRAY [INTEGER_32]
 			l_strides: ARRAY [INTEGER_32]

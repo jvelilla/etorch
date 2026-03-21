@@ -112,21 +112,13 @@ feature -- Operations
 		end
 
 	zero_grad
-			-- Zero gradients of all parameters.
+			-- Zero gradients of all parameters (set to Void to free memory).
 		local
 			p: ET_TENSOR
-			i: INTEGER_32
 		do
 			across params as param loop
 				p := param
-				if attached p.grad as g then
-					if attached {ET_STORAGE_REAL_64} g.storage as gs then
-						from i := 1 until i > gs.count loop
-							gs.put_real_64 (0.0, i)
-							i := i + 1
-						end
-					end
-				end
+				p.set_grad (Void)
 			end
 		end
 

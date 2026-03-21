@@ -21,8 +21,10 @@ feature {NONE} -- Initialization
 		do
 			data := a_data
 			create parents.make_empty
+			data.set_grad_node (Current)
 		ensure
 			data_set: data = a_data
+			node_linked: data.grad_node = Current
 			no_parents: parents.is_empty
 			is_leaf: is_leaf
 		end
@@ -35,8 +37,10 @@ feature {NONE} -- Initialization
 			data := a_data
 			parents := a_parents
 			grad_fn := a_fn
+			data.set_grad_node (Current)
 		ensure
 			data_set: data = a_data
+			node_linked: data.grad_node = Current
 			parents_set: parents = a_parents
 			fn_set: grad_fn = a_fn
 			not_leaf: not is_leaf

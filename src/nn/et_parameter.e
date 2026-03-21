@@ -28,8 +28,10 @@ feature {NONE} -- Initialization
 		do
 			make_from_storage (a_tensor.storage, a_tensor.shape, a_tensor.strides, a_tensor.offset)
 			requires_grad := True
+			if attached ensure_grad_node as n then end
 		ensure
 			requires_grad: requires_grad
+			has_node: grad_node /= Void
 		end
 
 	make_zeros (a_shape: ARRAY [INTEGER_32])
