@@ -19,6 +19,7 @@ feature -- Initialization
 			test_autograd_chain
 			test_training_loop
 			test_math
+			test_delivery_prediction
 		end
 
 feature -- Tests
@@ -270,6 +271,117 @@ feature -- Tests
 			print ("Sqrt of 4.0: " + d.out + "%N")
 			d := m.exp (1.0)
 			print ("Exp of 1.0: " + d.out + "%N")
+		end
+
+	test_delivery_prediction
+			-- The Machine Learning Pipeline Lab (Delivery Scenario)
+		local
+			distances, times: ET_TENSOR
+			d_arr, t_arr, n_arr: ARRAY [ARRAY [REAL_64]]
+			lin: ET_LINEAR
+			mod_array: ARRAY [ET_MODULE]
+			model: ET_SEQUENTIAL
+			loss_fn: ET_MSE_LOSS
+			optim: ET_SGD
+			epoch: INTEGER_32
+			outputs, loss: ET_TENSOR
+			no_grad_agent: PROCEDURE
+			l_layer: ET_MODULE
+		do
+			print ("%N[1.8] Delivery Prediction Lab (Notebook translation)%N")
+			
+			d_arr := << << 1.0 >>, << 2.0 >>, << 3.0 >>, << 4.0 >> >>
+			create distances.make_from_array2d (d_arr)
+			
+			t_arr := << << 6.96 >>, << 12.11 >>, << 16.77 >>, << 22.21 >> >>
+			create times.make_from_array2d (t_arr)
+
+			create mod_array.make_empty
+			create lin.make (1, 1)
+			mod_array.force (lin, 1)
+			
+			create model.make (mod_array)
+			create loss_fn
+			create optim.make (model.parameters, 0.01)
+
+			from epoch := 1 until epoch > 500 loop
+				optim.zero_grad
+				outputs := model.forward (distances)
+				loss := loss_fn.forward (outputs, times)
+				loss.backward
+				
+				if epoch = 1 then
+					print ("--- Epoch 1 Debug ---%N")
+					print ("Outputs: " + outputs.out + "%N")
+					print ("Loss: " + loss.scalar_value.out + "%N")
+					l_layer := model[1]
+					if attached {ET_LINEAR} l_layer as l_lin then
+						if attached l_lin.weight.grad as wg then
+							print ("Weight grad: " + wg.out + "%N")
+						else
+							print ("Weight grad: Void%N")
+						end
+						if attached l_lin.bias as lb and then attached lb.grad as bg then
+							print ("Bias grad: " + bg.out + "%N")
+						else
+							print ("Bias grad: Void%N")
+						end
+					end
+					print ("--- End Debug ---%N")
+				end
+				
+				optim.step
+				
+				if epoch \\ 50 = 0 then
+					print ("Epoch " + epoch.out + ": Loss = " + loss.scalar_value.out + "%N")
+				end
+				epoch := epoch + 1
+			end
+
+			l_layer := model[1]
+			if attached {ET_LINEAR} l_layer as l_lin then
+				print ("Weight: " + l_lin.weight.scalar_value.out + "%N")
+				if attached l_lin.bias as l_bias then
+					print ("Bias: " + l_bias.scalar_value.out + "%N")
+				end
+			end
+
+			no_grad_agent := agent (seq_model: ET_SEQUENTIAL)
+				local
+					l_n_arr: ARRAY [ARRAY [REAL_64]]
+					l_new_distance, l_predicted_time, l_matmul_result: ET_TENSOR
+					l_debug_layer: ET_MODULE
+					l_w_t: ET_TENSOR
+				do
+					l_n_arr := << << 7.0 >> >>
+					create l_new_distance.make_from_array2d (l_n_arr)
+					
+					-- Debug: manual forward to see intermediate results
+					l_debug_layer := seq_model[1]
+					if attached {ET_LINEAR} l_debug_layer as dl then
+						print ("--- Prediction Debug ---%N")
+						print ("Input: " + l_new_distance.out + "%N")
+						print ("Weight storage val: " + dl.weight.storage.item_as_real_64 (1).out + "%N")
+						l_w_t := dl.weight.transpose_internal (1, 2)
+						print ("Weight^T storage val: " + l_w_t.storage.item_as_real_64 (1).out + "%N")
+						l_matmul_result := l_new_distance.matmul_internal (l_w_t)
+						print ("matmul_internal result: " + l_matmul_result.scalar_value.out + "%N")
+						if attached dl.bias as db then
+							print ("Bias val: " + db.scalar_value.out + "%N")
+						end
+						print ("--- End Prediction Debug ---%N")
+					end
+					
+					l_predicted_time := seq_model.forward (l_new_distance)
+					print ("Prediction for a 7.0-mile delivery: " + l_predicted_time.scalar_value.out + " minutes%N")
+					
+					if l_predicted_time.scalar_value > 30.0 then
+						print ("Decision: Do NOT take the job. You will likely be late.%N")
+					else
+						print ("Decision: Take the job. You can make it!%N")
+					end
+				end (model)
+			{ET_TORCH}.with_no_grad (no_grad_agent)
 		end
 
 end

@@ -119,6 +119,9 @@ feature -- Operations
 			across params as param loop
 				p := param
 				p.set_grad (Void)
+				if attached p.grad_node as n then
+					n.set_grad_void
+				end
 			end
 		end
 
