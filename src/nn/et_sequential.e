@@ -26,6 +26,14 @@ feature -- Access
 
 	modules: LIST [ET_MODULE]
 
+	item alias "[]" (i: INTEGER_32): ET_MODULE
+			-- Access the i-th module (1-based index).
+		require
+			valid_index: i >= 1 and i <= modules.count
+		do
+			Result := modules.i_th (i)
+		end
+
 	parameters: LIST [ET_PARAMETER]
 		do
 			create {ARRAYED_LIST [ET_PARAMETER]} Result.make (0)

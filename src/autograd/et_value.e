@@ -82,6 +82,12 @@ feature -- Access
 			end
 		end
 
+	set_grad_void
+			-- Reset gradient to Void (used by optimizers during zero_grad).
+		do
+			grad := Void
+		end
+
 feature -- Autograd
 
 	backward

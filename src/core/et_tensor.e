@@ -20,7 +20,8 @@ create
 	make_randn,
 	make_zeros_with_dtype,
 	make_ones_with_dtype,
-	make_randn_with_dtype
+	make_randn_with_dtype,
+	make_from_array2d
 
 feature {NONE} -- Initialization
 
@@ -155,7 +156,82 @@ feature {NONE} -- Initialization
 			shape_set: shape.count = a_shape.count
 		end
 
+	make_from_array2d (values: ARRAY [ARRAY [REAL_64]])
+			-- Create a tensor from a 2D array literal.
+		require
+			valid_rows: values.count > 0
+			valid_cols: values [values.lower].count > 0
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_32
+			i, j, m, n: INTEGER_32
+			l_idx: INTEGER_32
+		do
+			m := values.count
+			n := values [values.lower].count
+			shape := <<m, n>>
+			l_strides := calculate_contiguous_strides (shape)
+			strides := l_strides
+			offset := 0
+			
+			create l_store.make (m * n)
+			storage := l_store
+			from i := 1 until i > m loop
+				from j := 1 until j > n loop
+					l_idx := (i - 1) * n + (j - 1)
+					l_store.put_real_32 (values [values.lower + i - 1] [values [values.lower + i - 1].lower + j - 1].truncated_to_real, l_idx + 1)
+					j := j + 1
+				end
+				i := i + 1
+			end
+			create device.make_cpu
+			create {ET_DTYPE_FLOAT32} dtype
+		ensure
+			shape_set: shape [1] = values.count and shape [2] = values [values.lower].count
+		end
+
 feature -- Element Access
+
+	scalar_value: REAL_64
+			-- Return the single scalar value of this tensor.
+			-- Equivalent to `.item()` in PyTorch.
+		require
+			is_scalar: rank = 0 or calculate_product (shape) = 1
+		local
+			zero_offset: INTEGER_32
+		do
+			zero_offset := 0
+			if attached {ET_STORAGE_REAL_64} storage as target_store then
+				Result := target_store.item_as_real_64 (offset + zero_offset + 1)
+			elseif attached {ET_STORAGE_REAL_32} storage as target_store then
+				Result := target_store.item_as_real_32 (offset + zero_offset + 1)
+			else
+				(create {EXCEPTIONS}).raise ("Storage is not REAL_64 or REAL_32 for scalar_value")
+			end
+		end
+
+	to_array: ARRAY [REAL_64]
+			-- Flatten storage and return as a raw Eiffel array.
+			-- Equivalent to `.numpy().flatten()`.
+		local
+			i, total: INTEGER_32
+		do
+			total := calculate_product (shape)
+			create Result.make_empty
+			if attached {ET_STORAGE_REAL_64} storage as s then
+				from i := 1 until i > total loop
+					Result.force (s.item_as_real_64 (offset + i), i)
+					i := i + 1
+				end
+			elseif attached {ET_STORAGE_REAL_32} storage as s then
+				from i := 1 until i > total loop
+					Result.force (s.item_as_real_32 (offset + i), i)
+					i := i + 1
+				end
+			else
+				(create {EXCEPTIONS}).raise ("Storage is not REAL_64 or REAL_32 for to_array")
+			end
+		end
 
 	put_real_64 (v: REAL_64; a_indices: ARRAY [INTEGER_32])
 			-- Set the element at N-D index `a_indices` to `v`.
@@ -274,7 +350,7 @@ feature -- Autograd Props
 			requires_grad := val
 		end
 
-feature -- Internal modifiers (Exported for autograd and testing)
+feature {ANY, ET_TENSOR, ET_VALUE, ET_MATMUL_FUNCTION, ET_ADD_FUNCTION, ET_MUL_FUNCTION}
 
 	set_dtype (a_dtype: ET_DTYPE)
 			-- Set the data type of this tensor.
@@ -326,7 +402,7 @@ feature -- Math Operations (with strict Contracts)
 			l_func: ET_ADD_FUNCTION
 			minus_other: ET_TENSOR
 		do
-			if requires_grad or other.requires_grad then
+			if {ET_TORCH}.is_grad_enabled and then (requires_grad or other.requires_grad) then
 				minus_other := other.mul_scalar (-1.0)
 				v1 := ensure_grad_node
 				v2 := minus_other.ensure_grad_node
@@ -352,7 +428,7 @@ feature -- Math Operations (with strict Contracts)
 			res_v: ET_VALUE
 			l_func: ET_ADD_FUNCTION
 		do
-			if requires_grad or other.requires_grad then
+			if {ET_TORCH}.is_grad_enabled and then (requires_grad or other.requires_grad) then
 				v1 := ensure_grad_node
 				v2 := other.ensure_grad_node
 				create l_func
@@ -560,7 +636,7 @@ feature -- Math Operations (with strict Contracts)
 			res_v: ET_VALUE
 			l_func: ET_MATMUL_FUNCTION
 		do
-			if requires_grad or other.requires_grad then
+			if {ET_TORCH}.is_grad_enabled and then (requires_grad or other.requires_grad) then
 				v1 := ensure_grad_node
 				v2 := other.ensure_grad_node
 				create l_func
@@ -1055,7 +1131,7 @@ feature -- Math Operations (continued)
 			res_v: ET_VALUE
 			l_func: ET_MUL_FUNCTION
 		do
-			if requires_grad or other.requires_grad then
+			if {ET_TORCH}.is_grad_enabled and then (requires_grad or other.requires_grad) then
 				v1 := ensure_grad_node
 				v2 := other.ensure_grad_node
 				create l_func

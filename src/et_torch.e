@@ -40,10 +40,10 @@ feature -- Factories (PyTorch style)
 feature -- Gradient Mode (instance-free)
 
     grad_enabled: CELL [BOOLEAN]
-        do  
+        once
             create Result.put (True)
         ensure
-            class
+            instance_free: class
         end
 
     no_grad
@@ -52,7 +52,7 @@ feature -- Gradient Mode (instance-free)
         do
             grad_enabled.put (False)
         ensure
-            class
+            instance_free: class
         end
 
     enable_grad
@@ -60,7 +60,7 @@ feature -- Gradient Mode (instance-free)
         do
             grad_enabled.put (True)
         ensure
-            class
+            instance_free: class
         end
 
     is_grad_enabled: BOOLEAN
@@ -68,7 +68,26 @@ feature -- Gradient Mode (instance-free)
         do
             Result := grad_enabled.item
         ensure
-            class
+            instance_free: class
+        end
+
+    with_no_grad (action: PROCEDURE)
+            -- Execute a block without tracking gradients. Ensures grad mode is restored.
+        local
+            was_enabled: BOOLEAN
+        do
+            was_enabled := is_grad_enabled
+            no_grad
+            action.call (Void)
+            if was_enabled then
+                enable_grad
+            end
+        ensure
+            instance_free: class
+        rescue
+            if was_enabled then
+                enable_grad
+            end
         end
 
 feature -- Serialization
