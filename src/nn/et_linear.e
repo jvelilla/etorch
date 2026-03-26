@@ -46,10 +46,11 @@ feature {NONE} -- Initialization
 	init_weights (in_features, out_features: INTEGER_32)
 		local
 			w_tensor: ET_TENSOR
+			l_math: DOUBLE_MATH
 		do
-			-- Note: Using zeros for architecture validation instead of proper Kaiming init.
-			-- Replace with make_randn when random generation is moved over.
-			create w_tensor.make_zeros (<<out_features, in_features>>)
+			create l_math
+			create w_tensor.make_randn (<<out_features, in_features>>)
+			w_tensor := w_tensor.mul_scalar (1.0 / l_math.sqrt (in_features.to_double))
 			create weight.make_from_tensor (w_tensor)
 		end
 

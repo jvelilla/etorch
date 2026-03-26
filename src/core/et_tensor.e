@@ -36,7 +36,7 @@ feature {NONE} -- Initialization
 			shape := a_shape.deep_twin
 			strides := a_strides.deep_twin
 			offset := a_offset
-			
+
 			create device.make_cpu
 			if attached {ET_STORAGE_REAL_64} a_storage then
 				create {ET_DTYPE_FLOAT64} dtype
@@ -173,7 +173,7 @@ feature {NONE} -- Initialization
 			l_strides := calculate_contiguous_strides (shape)
 			strides := l_strides
 			offset := 0
-			
+
 			create l_store.make (m * n)
 			storage := l_store
 			from i := 1 until i > m loop
@@ -279,13 +279,13 @@ feature -- Properties
 
 	shape: ARRAY [INTEGER_32]
 			-- Dimensions of the tensor.
-	
+
 	strides: ARRAY [INTEGER_32]
 			-- Step sizes for each dimension.
 
 	storage: ET_STORAGE
 			-- Underlying flat data.
-			
+
 	offset: INTEGER_32
 			-- Starting index offset in the storage (0-based mathematically, adapt internally to 1-based Eiffel structs).
 
@@ -294,10 +294,10 @@ feature -- Properties
 
 	dtype: ET_DTYPE
 			-- Data type of the tensor.
-			
+
 	requires_grad: BOOLEAN
 			-- Autograd tracking.
-			
+
 	rank: INTEGER_32
 			-- Number of dimensions (e.g. 2 for matrix).
 		do
@@ -306,13 +306,13 @@ feature -- Properties
 
 	grad_node: detachable ET_VALUE
 			-- Autograd graph node.
-			
+
 	set_grad_node (a_node: ET_VALUE)
 			-- Link this tensor to a graph node.
 		do
 			grad_node := a_node
 		end
-		
+
 	ensure_grad_node: ET_VALUE
 			-- Return existing grad_node or create a new leaf node.
 		do
@@ -326,7 +326,7 @@ feature -- Properties
 			node_exists: grad_node /= Void
 			result_consistent: Result = grad_node
 		end
-		
+
 	numel: INTEGER_32
 			-- Total number of elements physically representing this shape.
 		do
@@ -337,7 +337,7 @@ feature -- Autograd Props
 
 	grad: detachable ET_TENSOR
 			-- Gradient of this tensor.
-			
+
 	set_grad (a_grad: detachable ET_TENSOR)
 			-- Manually set the gradient (used dynamically or for tests).
 		do
@@ -357,7 +357,7 @@ feature {ANY, ET_TENSOR, ET_VALUE, ET_MATMUL_FUNCTION, ET_ADD_FUNCTION, ET_MUL_F
 		do
 			dtype := a_dtype
 		end
-		
+
 feature -- Autograd Props (continued)
 
 	backward
@@ -464,7 +464,7 @@ feature -- Math Operations (with strict Contracts)
 			br_shape := broadcast_shape (l_self.shape, l_other.shape)
 			l_count := calculate_product (br_shape)
 			l_strides := calculate_contiguous_strides (br_shape)
-			
+
 			if l_target_dtype.is_float64 then
 				create l_store_f64.make (l_count)
 				l_store := l_store_f64
@@ -497,7 +497,7 @@ feature -- Math Operations (with strict Contracts)
 				create l_store_f64.make (0)
 				l_store := l_store_f64
 			end
-			
+
 			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
 			Result.set_dtype (l_target_dtype)
 		end
@@ -514,7 +514,7 @@ feature -- Math Operations (with strict Contracts)
 		do
 			br_shape := broadcast_shape (shape, other.shape)
 			l_count := calculate_product (br_shape)
-			
+
 			if dtype.is_float64 then
 				if attached {ET_STORAGE_REAL_64} storage as s then
 					from i := 1 until i > l_count loop
@@ -567,7 +567,7 @@ feature -- Math Operations (with strict Contracts)
 		do
 			l_count := calculate_product (shape)
 			l_strides := calculate_contiguous_strides (shape)
-			
+
 			if dtype.is_float64 then
 				create l_store_f64.make (l_count)
 				l_store := l_store_f64
@@ -589,7 +589,7 @@ feature -- Math Operations (with strict Contracts)
 				create l_store_f64.make (0)
 				l_store := l_store_f64
 			end
-			
+
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
 			Result.set_dtype (dtype)
 		end
@@ -603,7 +603,7 @@ feature -- Math Operations (with strict Contracts)
 
 		do
 			l_count := calculate_product (shape)
-			
+
 			if dtype.is_float64 then
 				if attached {ET_STORAGE_REAL_64} storage as s then
 					from i := 1 until i > l_count loop
@@ -664,7 +664,7 @@ feature -- Math Operations (with strict Contracts)
 				l_new_shape[1] := 1
 				l_new_shape[2] := shape[1]
 				l_res := reshape (l_new_shape).matmul_internal (other)
-				
+
 				create l_new_shape.make_empty
 				from i := 1 until i > l_res.rank loop
 					if i /= l_res.rank - 1 then
@@ -1166,7 +1166,7 @@ feature -- Math Operations (continued)
 			br_shape := broadcast_shape (l_self.shape, l_other.shape)
 			l_count := calculate_product (br_shape)
 			l_strides := calculate_contiguous_strides (br_shape)
-			
+
 			if l_target_dtype.is_float64 then
 				create l_store_f64.make (l_count)
 				l_store := l_store_f64
@@ -1231,7 +1231,7 @@ feature -- Math Operations (continued)
 				(create {EXCEPTIONS}).raise ("Unsupported dtype for multiplication: " + l_target_dtype.out)
 				create {ET_STORAGE_REAL_64} l_store.make (0)
 			end
-			
+
 			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
 			Result.set_dtype (l_target_dtype)
 		end
@@ -1248,7 +1248,7 @@ feature -- Math Operations (continued)
 		do
 			br_shape := broadcast_shape (shape, other.shape)
 			l_count := calculate_product (br_shape)
-			
+
 			if dtype.is_float64 then
 				if attached {ET_STORAGE_REAL_64} storage as s then
 					from i := 1 until i > l_count loop
@@ -1301,7 +1301,7 @@ feature -- Math Operations (continued)
 		do
 			l_count := calculate_product (shape)
 			l_strides := calculate_contiguous_strides (shape)
-			
+
 			if dtype.is_float64 then
 				create l_store_f64.make (l_count)
 				l_store := l_store_f64
@@ -1323,7 +1323,7 @@ feature -- Math Operations (continued)
 				create l_store_f64.make (0)
 				l_store := l_store_f64
 			end
-			
+
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
 			Result.set_dtype (dtype)
 		end
@@ -1337,7 +1337,7 @@ feature -- Math Operations (continued)
 
 		do
 			l_count := calculate_product (shape)
-			
+
 			if dtype.is_float64 then
 				if attached {ET_STORAGE_REAL_64} storage as s then
 					from i := 1 until i > l_count loop
@@ -1390,7 +1390,7 @@ feature -- Math Operations (continued)
 			br_shape := broadcast_shape (l_self.shape, l_other.shape)
 			l_count := calculate_product (br_shape)
 			l_strides := calculate_contiguous_strides (br_shape)
-			
+
 			if l_target_dtype.is_float64 then
 				create l_store_f64.make (l_count)
 				l_store := l_store_f64
@@ -1423,7 +1423,7 @@ feature -- Math Operations (continued)
 				create l_store_f64.make (0)
 				l_store := l_store_f64
 			end
-			
+
 			create Result.make_from_storage (l_store, br_shape, l_strides, 0)
 			Result.set_dtype (l_target_dtype)
 		ensure
@@ -1443,7 +1443,7 @@ feature -- Math Operations (continued)
 		do
 			br_shape := broadcast_shape (shape, other.shape)
 			l_count := calculate_product (br_shape)
-			
+
 			if dtype.is_float64 then
 				if attached {ET_STORAGE_REAL_64} storage as s then
 					from i := 1 until i > l_count loop
@@ -1487,7 +1487,7 @@ feature -- Math Operations (continued)
 		do
 			l_count := calculate_product (shape)
 			l_strides := calculate_contiguous_strides (shape)
-			
+
 			if dtype.is_float64 then
 				create l_store_f64.make (l_count)
 				l_store := l_store_f64
@@ -1509,7 +1509,7 @@ feature -- Math Operations (continued)
 				create l_store_f64.make (0)
 				l_store := l_store_f64
 			end
-			
+
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
 			Result.set_dtype (dtype)
 		end
@@ -1523,7 +1523,7 @@ feature -- Math Operations (continued)
 
 		do
 			l_count := calculate_product (shape)
-			
+
 			if dtype.is_float64 then
 				if attached {ET_STORAGE_REAL_64} storage as s then
 					from i := 1 until i > l_count loop
@@ -1557,13 +1557,13 @@ feature -- Math Operations (continued)
 			create l_store.make (l_count)
 			l_strides := calculate_contiguous_strides (shape)
 			create l_math
-			
+
 			from i := 1 until i > l_count loop
 				idx_self := linear_index_to_offset (i, shape, strides, shape)
 				l_store.put_real_64 (l_math.exp (storage.item_as_real_64 (offset + idx_self + 1)), i)
 				i := i + 1
 			end
-			
+
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
 		end
 
@@ -1579,13 +1579,13 @@ feature -- Math Operations (continued)
 			create l_store.make (l_count)
 			l_strides := calculate_contiguous_strides (shape)
 			create l_math
-			
+
 			from i := 1 until i > l_count loop
 				idx_self := linear_index_to_offset (i, shape, strides, shape)
 				l_store.put_real_64 (l_math.sqrt (storage.item_as_real_64 (offset + idx_self + 1)), i)
 				i := i + 1
 			end
-			
+
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
 		end
 
@@ -1601,13 +1601,13 @@ feature -- Math Operations (continued)
 			create l_store.make (l_count)
 			l_strides := calculate_contiguous_strides (shape)
 			create l_math
-			
+
 			from i := 1 until i > l_count loop
 				idx_self := linear_index_to_offset (i, shape, strides, shape)
 				l_store.put_real_64 (l_math.log (storage.item_as_real_64 (offset + idx_self + 1)), i)
 				i := i + 1
 			end
-			
+
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
 		end
 
@@ -1624,7 +1624,7 @@ feature -- Math Operations (continued)
 			create l_store.make (l_count)
 			l_strides := calculate_contiguous_strides (shape)
 			create l_math
-			
+
 			from i := 1 until i > l_count loop
 				idx_self := linear_index_to_offset (i, shape, strides, shape)
 				l_val := storage.item_as_real_64 (offset + idx_self + 1)
@@ -1632,7 +1632,7 @@ feature -- Math Operations (continued)
 				l_store.put_real_64 (l_t, i)
 				i := i + 1
 			end
-			
+
 			create Result.make_from_storage (l_store, shape, l_strides, 0)
 		end
 
@@ -1671,7 +1671,7 @@ feature -- Math Operations (continued)
 			create l_math
 			pi := 3.14159265358979323846
 			l_sqrt_2_over_pi := l_math.sqrt (2.0 / pi)
-			
+
 			from i := 1 until i > l_count loop
 				idx_self := linear_index_to_offset (i, shape, strides, shape)
 				l_val := storage.item_as_real_64 (offset + idx_self + 1)
@@ -1679,13 +1679,32 @@ feature -- Math Operations (continued)
 				l_store.put_real_64 (l_val * l_cdf, i)
 				i := i + 1
 			end
-			
+
 			create Result.make_from_storage (l_store, shape.deep_twin, l_strides, 0)
 			Result.set_dtype (dtype)
 		end
 
 	relu: ET_TENSOR
-			-- Rectified Linear Unit (element-wise).
+			-- Rectified Linear Unit (element-wise), autograd-aware.
+		local
+			v1: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_RELU_FUNCTION
+		do
+			if requires_grad then
+				v1 := ensure_grad_node
+				create l_func
+				res_v := l_func.forward (<<v1>>)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := relu_internal
+			end
+		end
+
+	relu_internal: ET_TENSOR
+			-- Numeric implementation of ReLU: max(0, x).
 		local
 			l_strides: ARRAY [INTEGER_32]
 			l_store: ET_STORAGE_REAL_64
@@ -1695,7 +1714,7 @@ feature -- Math Operations (continued)
 			l_count := calculate_product (shape)
 			create l_store.make (l_count)
 			l_strides := calculate_contiguous_strides (shape)
-			
+
 			from i := 1 until i > l_count loop
 				idx_self := linear_index_to_offset (i, shape, strides, shape)
 				l_val := storage.item_as_real_64 (offset + idx_self + 1)
@@ -1706,8 +1725,100 @@ feature -- Math Operations (continued)
 				end
 				i := i + 1
 			end
-			
-			create Result.make_from_storage (l_store, shape, l_strides, 0)
+
+			create Result.make_from_storage (l_store, shape.deep_twin, l_strides, 0)
+			Result.set_dtype (dtype)
+		end
+
+	relu_mask_internal: ET_TENSOR
+			-- Binary mask: 1.0 where x > 0, else 0.0. Used by ET_RELU_FUNCTION.backward.
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i, idx_self: INTEGER_32
+			l_val: REAL_64
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				l_val := storage.item_as_real_64 (offset + idx_self + 1)
+				if l_val > 0.0 then
+					l_store.put_real_64 (1.0, i)
+				else
+					l_store.put_real_64 (0.0, i)
+				end
+				i := i + 1
+			end
+
+			create Result.make_from_storage (l_store, shape.deep_twin, l_strides, 0)
+			Result.set_dtype (dtype)
+		end
+
+	sigmoid: ET_TENSOR
+			-- Sigmoid activation σ(x) = 1 / (1 + exp(-x)), autograd-aware.
+		local
+			v1: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_SIGMOID_FUNCTION
+		do
+			if requires_grad then
+				v1 := ensure_grad_node
+				create l_func
+				res_v := l_func.forward (<<v1>>)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := sigmoid_internal
+			end
+		end
+
+	sigmoid_internal: ET_TENSOR
+			-- Numeric implementation of Sigmoid: 1 / (1 + exp(-x)).
+		local
+			l_strides: ARRAY [INTEGER_32]
+			l_store: ET_STORAGE_REAL_64
+			l_count, i, idx_self: INTEGER_32
+			l_val: REAL_64
+			l_math: DOUBLE_MATH
+		do
+			l_count := calculate_product (shape)
+			create l_store.make (l_count)
+			l_strides := calculate_contiguous_strides (shape)
+			create l_math
+
+			from i := 1 until i > l_count loop
+				idx_self := linear_index_to_offset (i, shape, strides, shape)
+				l_val := storage.item_as_real_64 (offset + idx_self + 1)
+				l_store.put_real_64 (1.0 / (1.0 + l_math.exp (-l_val)), i)
+				i := i + 1
+			end
+
+			create Result.make_from_storage (l_store, shape.deep_twin, l_strides, 0)
+			Result.set_dtype (dtype)
+		end
+
+	tanh: ET_TENSOR
+			-- Hyperbolic tangent (element-wise), autograd-aware.
+			-- Use tanh_val for the raw numeric version.
+		local
+			v1: ET_VALUE
+			res_v: ET_VALUE
+			l_func: ET_TANH_FUNCTION
+		do
+			if requires_grad then
+				v1 := ensure_grad_node
+				create l_func
+				res_v := l_func.forward (<<v1>>)
+				Result := res_v.data
+				Result.set_requires_grad (True)
+				Result.set_grad_node (res_v)
+			else
+				Result := tanh_val
+			end
 		end
 
 feature -- Reductions
@@ -1725,14 +1836,14 @@ feature -- Reductions
 		do
 			l_res := Current
 			diff := rank - target_shape.count
-			
+
 			-- 1. Sum away prepended dimensions (e.g., shape (2, 3, 4) -> target (3, 4), sum dim 1)
 			from i := 1 until i > diff loop
 				-- Always sum the first dimension since the rank decreases each time
 				l_res := l_res.sum_dim (1, False)
 				i := i + 1
 			end
-			
+
 			-- 2. Sum away broadcasted dimensions (e.g., shape (3, 4) -> target (1, 4), sum dim 1 keep_dim=True)
 			from d := 1 until d > target_shape.count loop
 				if l_res.shape [d] > 1 and target_shape [d] = 1 then
@@ -1740,7 +1851,7 @@ feature -- Reductions
 				end
 				d := d + 1
 			end
-			
+
 			Result := l_res
 		end
 
@@ -1765,7 +1876,7 @@ feature -- Reductions
 				end
 				i := i + 1
 			end
-			
+
 			l_res := Current
 			from i := 1 until i > sorted_dims.count loop
 				l_res := l_res.sum_dim (sorted_dims [i], keep_dim)
@@ -1795,7 +1906,7 @@ feature -- Reductions
 				end
 				i := i + 1
 			end
-			
+
 			l_res := Current
 			from i := 1 until i > sorted_dims.count loop
 				l_res := l_res.mean_dim (sorted_dims [i], keep_dim)
@@ -1825,7 +1936,7 @@ feature -- Reductions
 				end
 				i := i + 1
 			end
-			
+
 			l_res := Current
 			from i := 1 until i > sorted_dims.count loop
 				l_res := l_res.max_dim (sorted_dims [i], keep_dim)
@@ -1873,7 +1984,7 @@ feature -- Reductions
 			l_res_shape := shape.deep_twin
 			l_res_shape [dim] := 1
 			l_count := calculate_product (l_res_shape)
-			
+
 			if dtype.is_float64 then
 				create l_res_store_f64.make (l_count)
 				l_res_store := l_res_store_f64
@@ -1918,7 +2029,7 @@ feature -- Reductions
 				create l_res_store_f64.make (0)
 				l_res_store := l_res_store_f64
 			end
-			
+
 			if keep_dim then
 				l_final_shape := l_res_shape
 			else
@@ -1933,7 +2044,7 @@ feature -- Reductions
 					l_final_shape.force (1, 1)
 				end
 			end
-			
+
 			l_res_strides := calculate_contiguous_strides (l_final_shape)
 			create Result.make_from_storage (l_res_store, l_final_shape, l_res_strides, 0)
 			Result.set_dtype (dtype)
@@ -1969,25 +2080,25 @@ feature -- Reductions
 			l_count: INTEGER_32
 		do
 			l_mean := mean_dim (dim, True) -- Keepdim for broadcasting implicitly
-			
+
 			l_res_shape := shape.deep_twin
 			l_res_shape [dim] := 1
 			l_count := calculate_product (l_res_shape)
-			
+
 			l_inner := shape [dim]
-			
+
 			if unbiased then
 				n_div := (l_inner - 1).to_double
 			else
 				n_div := l_inner.to_double
 			end
 			if n_div < 1.0 then n_div := 1.0 end
-			
+
 			create l_store.make (l_count)
 			from i := 1 until i > l_count loop
 				idx_res := linear_index_to_offset (i, l_res_shape, calculate_contiguous_strides(l_res_shape), l_res_shape)
 				idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
-				
+
 				-- The mean tensor has shape `l_res_shape`. Its strides are contiguous.
 				mean_val := storage_item_as_real_64_universal (l_mean.storage, l_mean.offset + idx_res + 1)
 				sum_sq := 0.0
@@ -1999,7 +2110,7 @@ feature -- Reductions
 				l_store.put_real_64 (sum_sq / n_div, i)
 				i := i + 1
 			end
-			
+
 			if keep_dim then
 				l_final_shape := l_res_shape
 			else
@@ -2012,7 +2123,7 @@ feature -- Reductions
 				end
 				if l_final_shape.is_empty then l_final_shape.force (1, 1) end
 			end
-			
+
 			l_res_strides := calculate_contiguous_strides (l_final_shape)
 			create Result.make_from_storage (l_store, l_final_shape, l_res_strides, 0)
 			Result.set_dtype (dtype)
@@ -2037,9 +2148,9 @@ feature -- Reductions
 		do
 			l_res_shape := shape.deep_twin
 			l_res_shape [dim] := 1
-			
+
 			l_count := calculate_product (l_res_shape)
-			
+
 			if dtype.is_float64 then
 				create l_res_store_f64.make (l_count)
 				l_res_store := l_res_store_f64
@@ -2087,7 +2198,7 @@ feature -- Reductions
 				create l_res_store_f64.make (0)
 				l_res_store := l_res_store_f64
 			end
-			
+
 			if keep_dim then
 				l_final_shape := l_res_shape
 			else
@@ -2100,7 +2211,7 @@ feature -- Reductions
 				end
 				if l_final_shape.is_empty then l_final_shape.force (1, 1) end
 			end
-			
+
 			l_res_strides := calculate_contiguous_strides (l_final_shape)
 			create Result.make_from_storage (l_res_store, l_final_shape, l_res_strides, 0)
 			Result.set_dtype (dtype)
@@ -2144,21 +2255,21 @@ feature -- Reductions
 			l_count := calculate_product (shape)
 			create l_res_store.make (l_count)
 			l_res_strides := calculate_contiguous_strides (shape)
-			
+
 			l_res_shape := shape.deep_twin
 			l_res_shape [dim] := 1
-			
+
 			from i := 1 until i > calculate_product (l_res_shape) loop
 				idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
 				idx_dst := linear_index_to_offset (i, shape, l_res_strides, l_res_shape)
-				
+
 				l_max := storage.item_as_real_64 (offset + idx_src + 1)
 				from k := 1 until k >= shape [dim] loop
 					l_val := storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
 					if l_val > l_max then l_max := l_val end
 					k := k + 1
 				end
-				
+
 				l_sum := 0.0
 				from k := 0 until k >= shape [dim] loop
 					l_val := storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
@@ -2167,16 +2278,16 @@ feature -- Reductions
 					l_res_store.put_real_64 (l_val, idx_dst + k * l_res_strides [dim] + 1)
 					k := k + 1
 				end
-				
+
 				from k := 0 until k >= shape [dim] loop
 					l_val := l_res_store.item_as_real_64 (idx_dst + k * l_res_strides [dim] + 1)
 					l_res_store.put_real_64 (l_val / l_sum, idx_dst + k * l_res_strides [dim] + 1)
 					k := k + 1
 				end
-				
+
 				i := i + 1
 			end
-			
+
 			create Result.make_from_storage (l_res_store, shape.deep_twin, l_res_strides, 0)
 			Result.set_dtype (dtype)
 		end
@@ -2199,33 +2310,33 @@ feature -- Reductions
 			l_count := calculate_product (shape)
 			create l_res_store.make (l_count)
 			l_res_strides := calculate_contiguous_strides (shape)
-			
+
 			l_res_shape := shape.deep_twin
 			l_res_shape [dim] := 1
 			l_n := shape [dim]
-			
+
 			from i := 1 until i > calculate_product (l_res_shape) loop
 				idx_src := linear_index_to_offset (i, shape, strides, l_res_shape)
 				idx_dst := linear_index_to_offset (i, shape, l_res_strides, l_res_shape)
-				
+
 				l_sum := 0.0
 				from k := 0 until k >= shape [dim] loop
 					l_val := storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
 					l_sum := l_sum + (l_val * l_val)
 					k := k + 1
 				end
-				
+
 				l_rms := l_math.sqrt (l_sum / l_n + eps)
-				
+
 				from k := 0 until k >= shape [dim] loop
 					l_val := storage.item_as_real_64 (offset + idx_src + k * strides [dim] + 1)
 					l_res_store.put_real_64 (l_val / l_rms, idx_dst + k * l_res_strides [dim] + 1)
 					k := k + 1
 				end
-				
+
 				i := i + 1
 			end
-			
+
 			create Result.make_from_storage (l_res_store, shape.deep_twin, l_res_strides, 0)
 		end
 
@@ -2264,7 +2375,7 @@ feature -- Reductions
 				l_sum := l_sum + storage_item_as_real_64_universal (storage, offset + idx + 1)
 				i := i + 1
 			end
-			
+
 			create l_store.make (1)
 			l_store.put_real_64 (l_sum / l_count, 1)
 			create Result.make_from_storage (l_store, <<1>>, <<1>>, 0)
@@ -2485,7 +2596,7 @@ feature -- Helpers
 			j := a_shape.count
 			from i := br_shape.count until i < 1 loop
 				dim_idx := rem \\ br_shape [i]
-				
+
 				if j >= 1 then
 					if a_shape [j] = 1 then
 						Result := Result + 0
@@ -2494,7 +2605,7 @@ feature -- Helpers
 					end
 					j := j - 1
 				end
-				
+
 				rem := rem // br_shape [i]
 				i := i - 1
 			end
@@ -2510,7 +2621,7 @@ feature -- Helpers
 			l_count, i, idx_self, idx_other: INTEGER_32
 		do
 			l_count := calculate_product (shape)
-			
+
 			if dtype.is_float64 then
 				if attached {ET_STORAGE_REAL_64} storage as target_store and then
 				   attached {ET_STORAGE_REAL_64} other.storage as src_store then
@@ -2615,7 +2726,7 @@ feature -- Utilities
 				j := j - 1
 			end
 		end
-		
+
 	broadcast_shape (shape1, shape2: ARRAY [INTEGER_32]): ARRAY [INTEGER_32]
 		local
 			i, j, k: INTEGER_32
@@ -2654,7 +2765,7 @@ feature -- Utilities
 				l_count := calculate_product (shape)
 				from i := 1 until i > l_count loop
 					idx := linear_index_to_offset (i, shape, strides, shape)
-					
+
 					-- Extract as REAL_64
 					if dtype.is_float64 then
 						if attached {ET_STORAGE_REAL_64} storage as s then val_real64 := s.item_as_real_64 (offset + idx + 1) end
@@ -2663,11 +2774,11 @@ feature -- Utilities
 					elseif dtype.is_int32 then
 						if attached {ET_STORAGE_INT_32} storage as s then val_real64 := s.item_as_int_32 (offset + idx + 1) end
 					elseif dtype.is_bool then
-						if attached {ET_STORAGE_BOOL} storage as s then 
+						if attached {ET_STORAGE_BOOL} storage as s then
 							if s.item_as_boolean (offset + idx + 1) then val_real64 := 1.0 else val_real64 := 0.0 end
 						end
 					end
-					
+
 					-- Store casted value directly in target tensor
 					if attached {ET_STORAGE_REAL_64} l_res.storage as ts then
 						ts.put_real_64 (val_real64, i)
@@ -2678,7 +2789,7 @@ feature -- Utilities
 					elseif attached {ET_STORAGE_BOOL} l_res.storage as ts then
 						ts.put_boolean (val_real64 /= 0.0, i)
 					end
-					
+
 					i := i + 1
 				end
 				Result := l_res
