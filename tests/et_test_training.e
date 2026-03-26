@@ -189,6 +189,44 @@ feature -- Tests
 			print ("OK%N")
 		end
 
+	test_relu_autograd
+			-- Verify ReLU forward + backward: mask is 0 for x<=0, 1 for x>0.
+		local
+			x, y: ET_TENSOR
+			tol: REAL_64
+		do
+			print ("  [TEST] ReLU Autograd... ")
+			tol := 1.0e-5
+
+				-- x = [-1, 0, 2]  with requires_grad
+			create x.make_zeros_with_dtype (<<3>>, create {ET_DTYPE_FLOAT64})
+			if attached {ET_STORAGE_REAL_64} x.storage as s then
+				s.put_real_64 (-1.0, 1)
+				s.put_real_64 (0.0,  2)
+				s.put_real_64 (2.0,  3)
+			else
+				assert("Storage is ET_STORAGE_REAL_64", False)
+			end
+			x.set_requires_grad (True)
+
+				-- Forward
+			y := x.relu
+
+				-- Backward with all-ones upstream gradient
+			y.backward
+
+				-- d(relu)/dx should be: [0, 0, 1]
+			if attached x.grad as g then
+				assert_approx (g.item_as_real_64 (<<1>>), 0.0, tol, "relu grad[1] (x=-1) should be 0")
+				assert_approx (g.item_as_real_64 (<<2>>), 0.0, tol, "relu grad[2] (x=0)  should be 0")
+				assert_approx (g.item_as_real_64 (<<3>>), 1.0, tol, "relu grad[3] (x=2)  should be 1")
+			else
+				assert ("x.grad is not null", False)
+			end
+
+			print ("OK%N")
+		end
+
 	assert_approx (actual: REAL_64; expected: REAL_64; tol: REAL_64; msg: STRING)
 		do
 			assert (msg + " Expected " + expected.out + " but got " + actual.out, (actual - expected).abs <= tol)

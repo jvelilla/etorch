@@ -20,6 +20,7 @@ feature -- Initialization
 			test_training_loop
 			test_math
 			test_delivery_prediction
+			test_nonlinear_delivery_prediction
 		end
 
 feature -- Tests
@@ -32,7 +33,7 @@ feature -- Tests
             l_shape: ARRAY [INTEGER_32]
         do
             print ("%N[1.1] From Existing Data Structures ( List -> Tensor)%N")
-            
+
             -- Simplified for compile check - normally we parse the array
             l_data := <<1, 2, 3>>
             l_shape := <<3>>
@@ -48,27 +49,27 @@ feature -- Tests
 			l_strides: ARRAY [INTEGER_32]
 		do
 			print ("%N[1.2] Matrix Multiplication (OpenBLAS cblas_dgemm)%N")
-			
+
 			create a_store.make (4)
 			a_store.put_real_64 (1.0, 1)
 			a_store.put_real_64 (2.0, 2)
 			a_store.put_real_64 (3.0, 3)
 			a_store.put_real_64 (4.0, 4)
-			
+
 			create b_store.make (4)
 			b_store.put_real_64 (2.0, 1)
 			b_store.put_real_64 (0.0, 2)
 			b_store.put_real_64 (1.0, 3)
 			b_store.put_real_64 (2.0, 4)
-			
+
 			l_strides := <<2, 1>>
-			
+
 			create a.make_from_storage (a_store, <<2, 2>>, l_strides, 0)
 			create b.make_from_storage (b_store, <<2, 2>>, l_strides, 0)
-			
+
 			c := a.matmul (b)
 			print ("MATMUL Result shape: [" + c.shape [1].out + ", " + c.shape [2].out + "]%N")
-			
+
 			print ("C[1,1]: " + c.storage.item_as_real_64 (1).out + " (Expected 4)%N")
 			print ("C[1,2]: " + c.storage.item_as_real_64 (2).out + " (Expected 4)%N")
 			print ("C[2,1]: " + c.storage.item_as_real_64 (3).out + " (Expected 10)%N")
@@ -83,27 +84,27 @@ feature -- Tests
 			params: ARRAYED_LIST [ET_TENSOR]
 		do
 			print ("%N[1.3] Adam Optimization Step%N")
-			
+
 			create p.make_zeros (<<2>>)
 			if attached {ET_STORAGE_REAL_64} p.storage as ps then
 				ps.put_real_64 (1.0, 1) -- value: 1.0
 				ps.put_real_64 (2.0, 2) -- value: 2.0
 			end
 			p.set_requires_grad (True)
-			
+
 			create g.make_zeros (<<2>>)
 			if attached {ET_STORAGE_REAL_64} g.storage as gs then
 				gs.put_real_64 (0.1, 1) -- grad: 0.1
 				gs.put_real_64 (0.2, 2) -- grad: 0.2
 			end
 			p.set_grad (g)
-			
+
 			create params.make (1)
 			params.extend (p)
-			
+
 			create optim.make (params, 0.1) -- lr = 0.1
 			optim.step
-			
+
 			print ("After Adam Step (with LR=0.1):%N")
 			if attached {ET_STORAGE_REAL_64} p.storage as ps then
 				print ("P[1]: " + ps.item_as_real_64 (1).out + "%N")
@@ -119,19 +120,19 @@ feature -- Tests
 			loaded_state: detachable HASH_TABLE [ET_TENSOR, STRING]
 		do
 			print ("%N[1.4] Model Serialization%N")
-			
+
 			create p.make_zeros (<<2>>)
 			if attached {ET_STORAGE_REAL_64} p.storage as ps then
 				ps.put_real_64 (5.5, 1)
 				ps.put_real_64 (7.7, 2)
 			end
-			
+
 			create state.make (1)
 			state.put (p, "layer.weight")
-			
+
 			create sl
 			sl.save (state, "test_model.pt")
-			
+
 			loaded_state := sl.load ("test_model.pt")
 			if attached loaded_state as ls and then attached ls.item ("layer.weight") as lp then
 				print ("Loaded state value P[1]: ")
@@ -152,27 +153,27 @@ feature -- Tests
 			g_out: ET_TENSOR
 		do
 			print ("%N[1.5] Autograd Forward and Backward Pass%N")
-			
+
 			create t1.make_zeros (<<2>>)
 			if attached {ET_STORAGE_REAL_64} t1.storage as s then s.put_real_64 (2.0, 1); s.put_real_64 (3.0, 2) end
 			t1.set_requires_grad (True)
-			
+
 			create t2.make_zeros (<<2>>)
 			if attached {ET_STORAGE_REAL_64} t2.storage as s then s.put_real_64 (4.0, 1); s.put_real_64 (5.0, 2) end
 			t2.set_requires_grad (True)
-			
+
 			create v1.make (t1)
 			create v2.make (t2)
-			
+
 			create l_add
 			inputs := <<v1, v2>>
 			v_out := l_add.forward (inputs)
-			
+
 			create g_out.make_ones (v_out.data.shape)
 			v_out.set_grad (g_out)
-			
+
 			v_out.backward
-			
+
 			if attached v1.grad as g1 and attached v2.grad as g2 then
 				print ("V1 Grad: [" + g1.storage.item_as_real_64 (1).out + ", " + g1.storage.item_as_real_64 (2).out + "] (Expected [1, 1])%N")
 				print ("V2 Grad: [" + g2.storage.item_as_real_64 (1).out + ", " + g2.storage.item_as_real_64 (2).out + "] (Expected [1, 1])%N")
@@ -193,49 +194,49 @@ feature -- Tests
 			grad_pred: ET_TENSOR
 		do
 			print ("%N[1.6] Tiny Training Loop (y = w*x + b)%N")
-			
+
 			-- Prepare data: x = 2.0, target = 10.0
 			x := {ET_TORCH}.tensor (<<1>>)
 			if attached {ET_STORAGE_REAL_64} x.storage as s then s.put_real_64 (2.0, 1) end
-			
+
 			target := {ET_TORCH}.tensor (<<1>>)
 			if attached {ET_STORAGE_REAL_64} target.storage as s then s.put_real_64 (10.0, 1) end
-			
+
 			-- Prepare parameters: w = 1.0, b = 1.0
 			w := {ET_TORCH}.ones (<<1>>)
 			w.set_requires_grad (True)
 			b := {ET_TORCH}.ones (<<1>>)
 			b.set_requires_grad (True)
-			
+
 			-- Optimizer
 			create params.make (2)
 			params.extend (w)
 			params.extend (b)
 			create optim.make (params, 0.1) -- lr=0.1
-			
+
 			create l_mul
 			create l_add
-			
+
 			from step := 1 until step > 50 loop
 				-- 1. Forward pass
 				create v_w.make (w)
 				create v_x.make (x)
 				create v_b.make (b)
-				
+
 				v_mul := l_mul.forward (<<v_w, v_x>>)
 				v_pred := l_add.forward (<<v_mul, v_b>>)
-				
+
 				if attached {ET_STORAGE_REAL_64} v_pred.data.storage as spred and attached {ET_STORAGE_REAL_64} target.storage as starget then
 					pred_val := spred.item_as_real_64 (1)
 					target_val := starget.item_as_real_64 (1)
-					
+
 					-- Loss = 0.5 * (pred - target)^2
 					loss := 0.5 * (pred_val - target_val) * (pred_val - target_val)
-					
+
 					if step \\ 10 = 0 or step = 1 then
 						print ("Step " + step.out + " | Loss: " + loss.out + " | Pred: " + pred_val.out + "%N")
 					end
-					
+
 					-- 2. Backward pass
 					-- dL/d(pred) = (pred - target)
 					grad_pred := {ET_TORCH}.tensor (<<1>>)
@@ -244,15 +245,15 @@ feature -- Tests
 					end
 					v_pred.set_grad (grad_pred)
 					v_pred.backward
-					
+
 					-- 3. Optimize
 					optim.step
 					optim.zero_grad
 				end
-				
+
 				step := step + 1
 			end
-			
+
 			print ("Training Finished.%N")
 			if attached {ET_STORAGE_REAL_64} w.storage as ws and attached {ET_STORAGE_REAL_64} b.storage as bs then
 				print ("Optimized Weight w: " + ws.item_as_real_64 (1).out + "%N")
@@ -289,27 +290,39 @@ feature -- Tests
 			l_layer: ET_MODULE
 		do
 			print ("%N[1.8] Delivery Prediction Lab (Notebook translation)%N")
-			
+
+				-- Distance in miles
 			d_arr := << << 1.0 >>, << 2.0 >>, << 3.0 >>, << 4.0 >> >>
 			create distances.make_from_array2d (d_arr)
-			
+
+				-- Delivery time in minutes
 			t_arr := << << 6.96 >>, << 12.11 >>, << 16.77 >>, << 22.21 >> >>
 			create times.make_from_array2d (t_arr)
 
+				-- Define the Model
 			create mod_array.make_empty
 			create lin.make (1, 1)
 			mod_array.force (lin, 1)
-			
+
 			create model.make (mod_array)
+				-- Define the loss function and Optimizer
 			create loss_fn
+				-- Mean squared Error loss, meausre how wrong or right your predictions are.
+
 			create optim.make (model.parameters, 0.01)
+				-- The stochastic gradient descent,is that algorithm that decides with direction
+				-- to adjust your weight and bias to reduce the error.
 
 			from epoch := 1 until epoch > 500 loop
+					-- 0. Reset the optimizer
 				optim.zero_grad
+					-- 1. Make predictions
 				outputs := model.forward (distances)
+					-- 2. Calculate the loss - how bad was this guess?
 				loss := loss_fn.forward (outputs, times)
+					-- 3. Compute adjustments
 				loss.backward
-				
+
 				if epoch = 1 then
 					print ("--- Epoch 1 Debug ---%N")
 					print ("Outputs: " + outputs.out + "%N")
@@ -329,9 +342,9 @@ feature -- Tests
 					end
 					print ("--- End Debug ---%N")
 				end
-				
+					-- 4. Update the model
 				optim.step
-				
+
 				if epoch \\ 50 = 0 then
 					print ("Epoch " + epoch.out + ": Loss = " + loss.scalar_value.out + "%N")
 				end
@@ -355,7 +368,7 @@ feature -- Tests
 				do
 					l_n_arr := << << 7.0 >> >>
 					create l_new_distance.make_from_array2d (l_n_arr)
-					
+
 					-- Debug: manual forward to see intermediate results
 					l_debug_layer := seq_model[1]
 					if attached {ET_LINEAR} l_debug_layer as dl then
@@ -371,10 +384,10 @@ feature -- Tests
 						end
 						print ("--- End Prediction Debug ---%N")
 					end
-					
+
 					l_predicted_time := seq_model.forward (l_new_distance)
 					print ("Prediction for a 7.0-mile delivery: " + l_predicted_time.scalar_value.out + " minutes%N")
-					
+
 					if l_predicted_time.scalar_value > 30.0 then
 						print ("Decision: Do NOT take the job. You will likely be late.%N")
 					else
@@ -382,6 +395,93 @@ feature -- Tests
 					end
 				end (model)
 			{ET_TORCH}.with_no_grad (no_grad_agent)
+		end
+
+	test_nonlinear_delivery_prediction
+			-- Lab 2 notebook translation: non-linear model with ReLU.
+			-- Architecture: Linear(1,3) -> ReLU -> Linear(3,1)
+			-- Data is normalised before training (z-score).
+		local
+			distances, times: ET_TENSOR
+			distances_mean, distances_std, times_mean, times_std: ET_TENSOR
+			distances_norm, times_norm: ET_TENSOR
+			lin1, lin2: ET_LINEAR
+			act: ET_RELU
+			mod_array: ARRAY [ET_MODULE]
+			model: ET_SEQUENTIAL
+			loss_fn: ET_MSE_LOSS
+			optim: ET_SGD
+			epoch: INTEGER_32
+			outputs, loss: ET_TENSOR
+			d_arr, t_arr: ARRAY [ARRAY [REAL_64]]
+		do
+			print ("%N[1.9] Non-Linear Delivery Prediction Lab (ReLU notebook)%N")
+
+				-- Combined bike + car dataset (39 samples)
+			d_arr := <<
+				<< 1.0 >>, << 1.5 >>, << 2.0 >>, << 2.5 >>, << 3.0 >>,
+				<< 3.5 >>, << 4.0 >>, << 4.5 >>, << 5.0 >>, << 5.5 >>,
+				<< 6.0 >>, << 6.5 >>, << 7.0 >>, << 7.5 >>, << 8.0 >>,
+				<< 8.5 >>, << 9.0 >>, << 9.5 >>, << 10.0 >>, << 10.5 >>,
+				<< 11.0 >>, << 11.5 >>, << 12.0 >>, << 12.5 >>, << 13.0 >>,
+				<< 13.5 >>, << 14.0 >>, << 14.5 >>, << 15.0 >>, << 15.5 >>,
+				<< 16.0 >>, << 16.5 >>, << 17.0 >>, << 17.5 >>, << 18.0 >>,
+				<< 18.5 >>, << 19.0 >>, << 19.5 >>, << 20.0 >>
+			>>
+			create distances.make_from_array2d (d_arr)
+
+			t_arr := <<
+				<< 6.96 >>, << 9.67 >>, << 12.11 >>, << 14.56 >>, << 16.77 >>,
+				<< 21.7 >>, << 26.52 >>, << 32.47 >>, << 37.15 >>, << 42.35 >>,
+				<< 46.1 >>, << 52.98 >>, << 57.76 >>, << 61.29 >>, << 66.15 >>,
+				<< 67.63 >>, << 69.45 >>, << 71.57 >>, << 72.8 >>, << 73.88 >>,
+				<< 76.34 >>, << 76.38 >>, << 78.34 >>, << 80.07 >>, << 81.86 >>,
+				<< 84.45 >>, << 83.98 >>, << 86.55 >>, << 88.33 >>, << 86.83 >>,
+				<< 89.24 >>, << 88.11 >>, << 88.16 >>, << 91.77 >>, << 92.27 >>,
+				<< 92.13 >>, << 90.73 >>, << 90.39 >>, << 92.98 >>
+			>>
+			create times.make_from_array2d (t_arr)
+
+				-- Normalise: z = (x - mean) / std
+			distances_mean := distances.mean_all
+			distances_std  := (((distances - distances_mean).mul (distances - distances_mean)).mean_all).sqrt_val
+			times_mean     := times.mean_all
+			times_std      := (((times - times_mean).mul (times - times_mean)).mean_all).sqrt_val
+
+			distances_norm := (distances - distances_mean) / distances_std
+			times_norm     := (times - times_mean) / times_std
+
+				-- Model: Linear(1,3) -> ReLU -> Linear(3,1)
+			create mod_array.make_empty
+			create lin1.make (1, 3)
+			create act.make
+			create lin2.make (3, 1)
+			mod_array.force (lin1, 1)
+			mod_array.force (act,  2)
+			mod_array.force (lin2, 3)
+			create model.make (mod_array)
+
+			create loss_fn
+			create optim.make (model.parameters, 0.01)
+
+				-- Training loop (3000 epochs to handle non-linear complexity)
+			from epoch := 1 until epoch > 3000 loop
+				optim.zero_grad
+				outputs := model.forward (distances_norm)
+				loss    := loss_fn.forward (outputs, times_norm)
+				loss.backward
+				optim.step
+
+				if epoch \\ 50 = 0 then
+					print ("Epoch " + epoch.out + ": Loss = " + loss.scalar_value.out + "%N")
+				end
+				epoch := epoch + 1
+			end
+
+			if attached loss then
+				print ("Training Complete.%N")
+				print ("Final Loss: " + loss.scalar_value.out + "%N")
+			end
 		end
 
 end
